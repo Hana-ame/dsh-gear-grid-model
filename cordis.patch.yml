@@ -1,0 +1,3 @@
+- insert:
+    - id: gear-grid-model
+      name: '@local/gear-grid-model'
