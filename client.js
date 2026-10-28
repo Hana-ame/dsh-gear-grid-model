@@ -32,7 +32,7 @@ window.__ModuleLoader__.load({
            标题用 --dsw-font-family-brand（Montserrat，随主题包已加载）。
          · provider 色相经 color-mix 叠加在别名令牌之上，明暗自跟随；
            不写死明暗双份，不引入任何图标资产。
-         · 键盘模型对齐 dsh 菜单：方向键只移动焦点，Enter/Tab 提交并回到触发器，
+         · 键盘模型对齐 dsh 菜单：方向键移动可见焦点环（DOM 焦点 + .gg-focus 双重落点），Enter/Tab 提交并回到触发器，
            Esc 关闭。Tab 在内容区才截获，网格外（tab/关闭按钮）走原生焦点流。
        ──────────────────────────────────────────────────────────────── */
 
@@ -171,7 +171,7 @@ window.__ModuleLoader__.load({
       '.gg-chip{box-sizing:border-box;max-width:100%;border-radius:var(--dsw-radius-md);cursor:pointer;touch-action:manipulation;background:var(--dsw-alias-bg-layer-3);border:1px solid var(--dsw-alias-border-l2);outline:none;padding:5px 10px;font-size:12px;line-height:16px;font-family:var(--ds-font-family-code);color:var(--dsw-alias-label-primary);white-space:normal;overflow-wrap:anywhere;text-align:left;transition:border-color .1s var(--ds-ease-in-out),background-color .1s var(--ds-ease-in-out)}',
       '.gg-chip:hover{border-color:color-mix(in srgb,var(--gg-hue) 34%,var(--dsw-alias-border-l2))}',
       '.gg-chip.on{background:linear-gradient(155deg,color-mix(in srgb,var(--gg-hue) 18%,transparent),transparent 72%),var(--dsw-alias-bg-layer-3);border-color:color-mix(in srgb,var(--gg-hue) 55%,var(--dsw-alias-border-l2));color:color-mix(in srgb,var(--gg-hue) 72%,var(--dsw-alias-label-primary));font-weight:500}',
-      '.gg-chip:focus-visible{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
+      '.gg-chip:focus-visible,.gg-chip.gg-focus{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
 
       '.gg-foot{justify-content:space-between;align-items:center;gap:10px;margin:10px 0 0;padding:9px 24px 14px;border-top:.5px solid var(--dsw-alias-border-l2);display:flex}',
       '.gg-cur{font-family:var(--ds-font-family-code);font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary);text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}',
@@ -250,6 +250,17 @@ window.__ModuleLoader__.load({
         props.onSelect({ provider: g.id, model: g.models[c].id });
       }
       const settle = (p, c) => { commit(p, c); props.onClose(); };
+      /* 方向键移动"真焦点"：状态只改 tabIndex 不搬 DOM 焦点，键盘环不会动，
+         所以这里同时把 DOM 焦点移到目标 chip（并让 .gg-focus 画环）。 */
+      const focusCell = (p, c) => {
+        const np = Math.min(Math.max(0, p), Math.max(0, nP - 1));
+        const g = rows[np];
+        if (!g || !g.models.length) return;
+        const nc = Math.min(Math.max(0, c), g.models.length - 1);
+        setFocus({ p: np, c: nc });
+        const el = veilRef.current && veilRef.current.querySelector('[data-gg-p="' + np + '"][data-gg-c="' + nc + '"]');
+        if (el) el.focus();
+      };
 
       react.useLayoutEffect(() => { if (veilRef.current) veilRef.current.focus(); }, []);
 
@@ -285,12 +296,12 @@ window.__ModuleLoader__.load({
           settle(fr, fc);
           return;
         }
-        if (k === 'ArrowRight') { e.preventDefault(); setFocus({ p: fr, c: Math.min(nC - 1, fc + 1) }); return; }
-        if (k === 'ArrowLeft') { e.preventDefault(); setFocus({ p: fr, c: Math.max(0, fc - 1) }); return; }
-        if (k === 'ArrowDown') { e.preventDefault(); setFocus({ p: Math.min(nP - 1, fr + 1), c: fc }); return; }
-        if (k === 'ArrowUp') { e.preventDefault(); setFocus({ p: Math.max(0, fr - 1), c: fc }); return; }
-        if (k === 'Home') { e.preventDefault(); setFocus({ p: fr, c: 0 }); return; }
-        if (k === 'End') { e.preventDefault(); setFocus({ p: fr, c: nC - 1 }); }
+        if (k === 'ArrowRight') { e.preventDefault(); focusCell(fr, Math.min(nC - 1, fc + 1)); return; }
+        if (k === 'ArrowLeft') { e.preventDefault(); focusCell(fr, Math.max(0, fc - 1)); return; }
+        if (k === 'ArrowDown') { e.preventDefault(); focusCell(Math.min(nP - 1, fr + 1), fc); return; }
+        if (k === 'ArrowUp') { e.preventDefault(); focusCell(Math.max(0, fr - 1), fc); return; }
+        if (k === 'Home') { e.preventDefault(); focusCell(fr, 0); return; }
+        if (k === 'End') { e.preventDefault(); focusCell(fr, nC - 1); }
       }
 
       const curGroup = current ? groups.find((g) => g.id === current.provider) || null : null;
@@ -370,10 +381,12 @@ window.__ModuleLoader__.load({
                       return j('button', {
                         key: m.id,
                         type: 'button',
-                        className: 'gg-chip' + (sel ? ' on' : ''),
+                        className: 'gg-chip' + (sel ? ' on' : '') + (p === fr && c === fc ? ' gg-focus' : ''),
                         style: { '--gg-hue': hueForProvider(g.id) },
                         'aria-label': t('grid.cell', { model: m.name }),
                         'aria-pressed': sel,
+                        'data-gg-p': p,
+                        'data-gg-c': c,
                         tabIndex: p === fr && c === fc ? 0 : -1,
                         onPointerDown: (e) => cellDown(e, p, c),
                         onPointerEnter: () => cellEnter(p, c),
