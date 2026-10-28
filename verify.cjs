@@ -102,6 +102,7 @@ const checks = [
   [/prefers-reduced-motion:reduce/, '动效尊重 prefers-reduced-motion'],
   [/--dsw-radius-sm/, '触发器沿用 composer 的 radius-sm'],
   [/height:28px/, '触发器沿用 composer 工具行 28px'],
+  [/\.gg-card\{[^']*height:min\(640px,calc\(100dvh - 96px\)\)/, '卡片高度固定（切换 provider 不改窗口尺寸）'],
   [/--dsw-radius-panel/, '卡片沿用 Modal 的 radius-panel'],
   [/--dsw-elevation-prominent/, '卡片沿用 Menu 的 elevation-prominent'],
   [/--dsw-alias-bg-mask-1/, '遮罩沿用 Modal mask-1'],

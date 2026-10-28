@@ -11,6 +11,8 @@ window.__ModuleLoader__.load({
        形态（对齐 Hana-ame/gear-grid 的 Cosmic Shifter，按用户意见收敛）：
          · 触发器：28px 药丸，provider 色点 + 模型名 + 下拉箭头，无图标无辉光
          · 弹窗：全屏星野遮罩 + 居中卡片（blur 遮罩 + 当前 provider 的星云染色）
+           **卡片高度固定**（不随 provider tab 过滤结果伸缩），切换 provider 时
+           provider 选择栏与窗口位置/大小都不动，内容超出走内部滚动。
          · 内容：**按 provider 分块分区**——每个 provider 一个独立块
            （色点 + 名字 + 数量做块头，模型以自动换行的 chip 排列，名字不截断）
          · 默认「全部」：所有 provider 的块一次平铺（一级菜单直出），
@@ -136,7 +138,11 @@ window.__ModuleLoader__.load({
       '.gg-mask:after{content:"";position:absolute;inset:0;background:var(--dsw-alias-bg-mask-1);animation:gg-fade var(--ds-transition-duration) var(--ds-ease-in-out)}',
       '.gg-stars{position:absolute;inset:0;overflow:hidden;pointer-events:none}',
       '.gg-star{position:absolute;border-radius:50%;background:var(--dsw-alias-label-tertiary);opacity:var(--twmin,.15);animation:gg-twinkle var(--twd,3.4s) ease-in-out var(--twdl,0s) infinite}',
-      '.gg-card{position:relative;z-index:1;box-sizing:border-box;width:min(640px,100%);max-height:min(640px,calc(100dvh - 96px));border:0;border-radius:var(--dsw-radius-panel);background:var(--dsw-alias-bg-layer-2);box-shadow:var(--dsw-elevation-prominent);--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);animation:gg-pop .3s cubic-bezier(.34,1.3,.5,1);overflow:hidden;flex-direction:column;display:flex}',
+      /* 卡片尺寸恒定：高度只由视口决定（min(640, 100dvh-96)），不随 provider tab
+         过滤后的块数增减而变化——否则切换 provider 时卡片重新居中、provider
+         选择栏（.gg-tabs）会上下跳。内容超出由内部 .gg-scroll 滚动；内容不足
+         留白，换取窗口位置/大小稳定。 */
+      '.gg-card{position:relative;z-index:1;box-sizing:border-box;width:min(640px,100%);height:min(640px,calc(100dvh - 96px));max-height:min(640px,calc(100dvh - 96px));border:0;border-radius:var(--dsw-radius-panel);background:var(--dsw-alias-bg-layer-2);box-shadow:var(--dsw-elevation-prominent);--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);animation:gg-pop .3s cubic-bezier(.34,1.3,.5,1);overflow:hidden;flex-direction:column;display:flex}',
 
       '.gg-head{justify-content:space-between;align-items:flex-start;gap:8px;padding:20px 16px 12px 24px;display:flex}',
       '.gg-titleWrap{min-width:0}',
