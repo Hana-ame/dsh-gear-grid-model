@@ -380,6 +380,9 @@ window.__ModuleLoader__.load({
       };
 
       react.useLayoutEffect(() => { if (veilRef.current) veilRef.current.focus(); }, []);
+      /* 取消最后一个常用后 chip 全部卸载，焦点会掉到 body——收回弹窗，
+         这样 Esc/方向键仍可用（点击遮罩关闭本来就不依赖焦点）。 */
+      react.useEffect(() => { if (!rows.length && veilRef.current) veilRef.current.focus(); }, [rows.length]);
 
       /**
        * 鼠标拖拽扫选：pointerdown 即提交并跟随，释放时收手（关闭）。
