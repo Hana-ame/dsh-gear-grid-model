@@ -9,22 +9,36 @@ window.__ModuleLoader__.load({
        Gear Grid · 模型选择器（composer 的 model seat 换装）
        ────────────────────────────────────────────────────────────────
        形态（对齐 Hana-ame/gear-grid 的 Cosmic Shifter，按用户意见收敛）：
-         · 触发器：28px 药丸，provider 色点 + 模型名 + 下拉箭头，无图标无辉光
+         · 触发器：28px 药丸，provider 色点 + 模型名 + 思考强度 + 下拉箭头，
+           无图标无辉光（与原生 seat 同形：模型与档位写在同一颗 pill 里）
          · 弹窗：全屏星野遮罩 + 居中卡片（blur 遮罩 + 当前 provider 的星云染色）
            **卡片高度固定**（不随 provider tab 过滤结果伸缩），切换 provider 时
            provider 选择栏与窗口位置/大小都不动，内容超出走内部滚动。
          · 内容：**按 provider 分块分区**——每个 provider 一个独立块
-           （色点 + 名字 + 数量做块头，模型以自动换行的 chip 排列，名字不截断）
-         · 顶部 tab 维持原样（全部 + 各 provider）。「全部」不再平铺所有模型，
-           只显示**手动打了 star 的常用模型**，并按 provider 分组（块头写出
-           provider 名，同名模型靠块头区分）；chip 右侧 ☆ / 键盘 F 收/取消，
-           localStorage 持久化，不按使用频率自动推断。
+           （色点 + 名字 + 数量做块头，模型以自动换行的 pill 排列，名字不截断）
+         · 每颗模型 pill = 名字 + **思考强度分列** + ☆：模型声明了
+           reasoning.efforts 时，同一颗 pill 里逐档的可点分段（点哪档就提交
+           模型+该档，不另开二级菜单）；未声明 efforts 的模型 pill 与原来一致。
+         · search bar 在 provider tab **上面**；搜索是全局的：不缩在当前视图里，
+           一次搜所有 provider，命中结果按 provider 分块占满内容区（同名模型靠
+           块头区分）；整块命中 provider 名时显示该块全部。`/` 聚焦搜索，
+           搜索框内按键全交还原生输入（↓ 进第一条结果，Enter 选它）。
+         · 键盘选 provider：网格最上面按 ↑ 回到 tab 区，tab 上 ←/→ 直接切换
+           provider（点 tab 也会退出搜索）；tab 上 ↓ 回到网格。
+         · 选择高亮只给**真正选中的模型**（.gg-cell.on）；键盘焦点环只在用键盘
+           导航时出现（.gg-kb 作用域），鼠标打开/点 tab 时不会给任何模型画边框，
+           避免"默认选中"的误读。
+         · 顶部 tab 是「☆ 常用」+ 各 provider（原「全部」已改名「常用」）。
+           「☆ 常用」不再平铺所有模型，只显示**手动打了 star 的常用模型**，
+           并按 provider 分组（块头写出 provider 名，同名模型靠块头区分），
+           常用视图顶部不再重复一行「☆ 常用」小标题；pill 右侧 ☆ / 键盘 F
+           收/取消，localStorage 持久化，不按使用频率自动推断。
          · 点具体 provider tab 后，才平铺**该 provider 的全部可用模型**。
            整窗仍只有一套入口：原 tab；不另加 provider 索引或第二个「常用」tab。
        数据层：
          · 只贡献 conversation.input.right（list slot，零占用者），
            复用 ctx.modelDirectories —— 与 /model 命令、原生 seat 同源，
-           提交走 directory.select({provider, model})。
+           提交走 directory.select({provider, model, reasoningEffort?})。
          · 原生 conversation.input.model 是 single slot，不能重注册，
            因此折叠显示而不是卸载：原生模块照常提供 ModelDirectoryResolver
            与 /model 命令，本包只把它的触发器 display:none。
@@ -40,7 +54,8 @@ window.__ModuleLoader__.load({
          · provider 色相经 color-mix 叠加在别名令牌之上，明暗自跟随；
            不写死明暗双份，不引入任何图标资产。
          · 键盘模型对齐 dsh 菜单：方向键移动可见焦点环（DOM 焦点 + .gg-focus 双重落点），Enter/Tab 提交并回到触发器，
-           Esc 关闭。Tab 在内容区才截获，网格外（tab/关闭按钮）走原生焦点流。
+           Esc 关闭；`/` 聚焦搜索框，搜索框内按键归还原生输入（Enter=选第一个可见模型）。
+           思考强度分段是鼠标入口（键盘走原生 seat 的 /model 菜单，二者同源）。
        ──────────────────────────────────────────────────────────────── */
 
     /** jsx/jsxs 收敛器。**关键**：React 自动运行时的 `jsx(type, props, key)` 第三实参是
@@ -75,9 +90,14 @@ window.__ModuleLoader__.load({
       'dialog.eyebrow': 'GEAR GRID',
       'dialog.title': '选择模型',
       'dialog.close': '关闭',
-      'tab.aria': '筛选模型目录：全部只列常用，或选单个 provider 看全量',
-      'tab.all': '全部',
-      'fav.title': '常用',
+      'tab.aria': '筛选模型目录：常用只列打了 star 的模型，或选单个 provider 看全量',
+      'tab.all': '常用',
+      'search.placeholder': '搜索模型…',
+      'search.clear': '清除搜索',
+      'search.empty': '没有匹配「{q}」的模型。',
+      'effort.providerDefault': '默认',
+      'effort.cell': '思考强度：{effort}',
+      'seat.ariaEffort': '选择模型，当前 {model}，思考强度 {effort}',
       'fav.add': '加入常用：{model}',
       'fav.remove': '移出常用：{model}',
       'fav.empty': '还没有常用模型。',
@@ -100,9 +120,14 @@ window.__ModuleLoader__.load({
       'dialog.eyebrow': 'GEAR GRID',
       'dialog.title': 'Select model',
       'dialog.close': 'Close',
-      'tab.aria': 'Filter the catalog: All shows favorites only; a provider shows its full list',
-      'tab.all': 'All',
-      'fav.title': 'Favorites',
+      'tab.aria': 'Filter the catalog: Favorites lists starred models only; a provider shows its full list',
+      'tab.all': 'Favorites',
+      'search.placeholder': 'Search models…',
+      'search.clear': 'Clear search',
+      'search.empty': 'No models match "{q}".',
+      'effort.providerDefault': 'Default',
+      'effort.cell': 'Reasoning effort: {effort}',
+      'seat.ariaEffort': 'Select model, current {model}, reasoning effort {effort}',
       'fav.add': 'Add to favorites: {model}',
       'fav.remove': 'Remove from favorites: {model}',
       'fav.empty': 'No favorite models yet.',
@@ -207,6 +232,7 @@ window.__ModuleLoader__.load({
       '.gg-fab:disabled{cursor:default;border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-dimmed)}',
       '.gg-provDot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--gg-hue);border:1px solid color-mix(in srgb,var(--gg-hue) 55%,var(--dsw-alias-border-l3))}',
       '.gg-name{color:inherit;text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}',
+      '.gg-fbEff{flex:none;color:var(--dsw-alias-label-caption);font-family:var(--ds-font-family-code);font-size:11px;line-height:20px}',
       '.gg-chev{flex:none;transition:transform .12s var(--ds-ease-in-out);color:var(--dsw-alias-label-caption)}',
       '.gg-chev svg,.gg-close svg{display:block}',
       '.gg-chev.open{transform:rotate(180deg)}',
@@ -235,10 +261,20 @@ window.__ModuleLoader__.load({
       '.gg-close:hover{background:var(--dsw-alias-interactive-bg-hover)}',
       '.gg-close:focus-visible{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
       '.gg-tabs{gap:6px;padding:0 24px 6px;flex-wrap:wrap;display:flex}',
-      '.gg-tab{box-sizing:border-box;padding:4px 9px;border-radius:999px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:1px solid var(--dsw-alias-border-l2);outline:none;transition:background-color var(--ds-transition-duration) var(--ds-ease-in-out),color var(--ds-transition-duration) var(--ds-ease-in-out),border-color var(--ds-transition-duration) var(--ds-ease-in-out)}',
+      '.gg-tab{box-sizing:border-box;display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:1px solid var(--dsw-alias-border-l2);outline:none;transition:background-color var(--ds-transition-duration) var(--ds-ease-in-out),color var(--ds-transition-duration) var(--ds-ease-in-out),border-color var(--ds-transition-duration) var(--ds-ease-in-out)}',
+      '.gg-tabStar{display:grid;place-items:center;flex:none}',
       '.gg-tab:hover{background:var(--dsw-alias-interactive-bg-hover)}',
       '.gg-tab:focus-visible{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
       '.gg-tab.on{color:var(--dsw-alias-label-primary);border-color:color-mix(in srgb,var(--gg-hue) 48%,var(--dsw-alias-border-l2));background:color-mix(in srgb,var(--gg-hue) 14%,transparent)}',
+
+      /* 搜索栏：过滤当前视图（全部=常用 / 单个 provider）的模型名 */
+      '.gg-searchRow{position:relative;padding:0 24px 8px;display:flex}',
+      '.gg-search{box-sizing:border-box;width:100%;height:30px;border-radius:var(--dsw-radius-sm);border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);font-family:var(--ds-font-family-code);font-size:12px;line-height:18px;padding:0 30px 0 9px;outline:none}',
+      '.gg-search::placeholder{color:var(--dsw-alias-label-caption)}',
+      '.gg-search:focus{border-color:color-mix(in srgb,var(--gg-hue) 44%,var(--dsw-alias-border-l2));box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
+      '.gg-searchClear{position:absolute;right:28px;top:50%;transform:translateY(-50%);width:20px;height:20px;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-caption);cursor:pointer;display:grid;place-items:center;padding:0}',
+      '.gg-searchClear:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}',
+      '.gg-searchClear:focus-visible{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
 
       /* 分块分区：每个 provider 一块，块内模型 chip 自动换行，名字不截断 */
       '.gg-body{flex:1 1 auto;min-height:0;padding:6px 16px 0;flex-direction:column;display:flex}',
@@ -249,22 +285,24 @@ window.__ModuleLoader__.load({
       '.gg-blkName{font-family:var(--ds-font-family-code);font-size:12px;line-height:18px;font-weight:500;color:var(--dsw-alias-label-primary);white-space:normal;overflow-wrap:anywhere;min-width:0;flex:0 1 auto}',
       '.gg-blkCount{flex:none;font-family:var(--ds-font-family-code);font-size:10px;line-height:15px;color:var(--dsw-alias-label-tertiary)}',
       '.gg-blkM{gap:6px;flex-wrap:wrap;display:flex;align-items:flex-start}',
-      /* 每个模型 = cell（chip 本体 + 右侧 ☆ 收藏钮，两枚兄弟 button，不嵌套） */
-      '.gg-cell{position:relative;display:inline-flex;max-width:100%}',
-      '.gg-chip{box-sizing:border-box;max-width:100%;display:inline-flex;align-items:center;gap:6px;border-radius:var(--dsw-radius-md);cursor:pointer;touch-action:manipulation;background:var(--dsw-alias-bg-layer-3);border:1px solid var(--dsw-alias-border-l2);outline:none;padding:5px 23px 5px 9px;font-size:12px;line-height:16px;font-family:var(--ds-font-family-code);color:var(--dsw-alias-label-primary);white-space:normal;overflow-wrap:anywhere;text-align:left;transition:border-color .1s var(--ds-ease-in-out),background-color .1s var(--ds-ease-in-out)}',
+      /* 每个模型 = 一颗完整药丸：名字 chip + 思考强度分列 + ☆（兄弟 button，不嵌套） */
+      '.gg-cell{box-sizing:border-box;position:relative;display:inline-flex;align-items:stretch;max-width:100%;border-radius:var(--dsw-radius-md);border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);transition:border-color .1s var(--ds-ease-in-out),background-color .1s var(--ds-ease-in-out)}',
+      '.gg-cell:hover{border-color:color-mix(in srgb,var(--gg-hue) 34%,var(--dsw-alias-border-l2))}',
+      '.gg-cell.on{background:linear-gradient(155deg,color-mix(in srgb,var(--gg-hue) 18%,transparent),transparent 72%),var(--dsw-alias-bg-layer-3);border-color:color-mix(in srgb,var(--gg-hue) 55%,var(--dsw-alias-border-l2))}',
+      '.gg-kb .gg-cell:focus-within{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
+      '.gg-chip{box-sizing:border-box;appearance:none;border:0;background:0 0;max-width:100%;min-width:0;align-items:center;cursor:pointer;touch-action:manipulation;outline:none;padding:5px 8px 5px 9px;font-size:12px;line-height:16px;font-family:var(--ds-font-family-code);color:var(--dsw-alias-label-primary);white-space:normal;overflow-wrap:anywhere;text-align:left;display:inline-flex;gap:6px}',
+      '.gg-cell.on .gg-chip{color:color-mix(in srgb,var(--gg-hue) 72%,var(--dsw-alias-label-primary));font-weight:500}',
       '.gg-chipName{min-width:0;overflow-wrap:anywhere}',
-      '.gg-chip:hover{border-color:color-mix(in srgb,var(--gg-hue) 34%,var(--dsw-alias-border-l2))}',
-      '.gg-chip.on{background:linear-gradient(155deg,color-mix(in srgb,var(--gg-hue) 18%,transparent),transparent 72%),var(--dsw-alias-bg-layer-3);border-color:color-mix(in srgb,var(--gg-hue) 55%,var(--dsw-alias-border-l2));color:color-mix(in srgb,var(--gg-hue) 72%,var(--dsw-alias-label-primary));font-weight:500}',
-      '.gg-chip:focus-visible,.gg-chip.gg-focus{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
-      /* ☆ 收藏钮：常驻占位（chip 预留右 padding），未收藏时 hover/focus 才显形 */
-      '.gg-pin{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:19px;height:19px;padding:0;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-caption);cursor:pointer;display:grid;place-items:center;opacity:0;transition:opacity .1s var(--ds-ease-in-out),color .1s var(--ds-ease-in-out),background-color .1s var(--ds-ease-in-out)}',
+      /* 思考强度分列：同一颗药丸内每档一枚可点分段（只有适配器声明 efforts 的模型才有） */
+      '.gg-eff{box-sizing:border-box;appearance:none;border:0;border-left:1px solid var(--dsw-alias-border-l2);background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer;outline:none;padding:0 7px;font-size:11px;line-height:16px;font-family:var(--ds-font-family-code);white-space:nowrap;transition:background-color .1s var(--ds-ease-in-out),color .1s var(--ds-ease-in-out)}',
+      '.gg-eff:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
+      '.gg-eff.on{background:color-mix(in srgb,var(--gg-hue) 14%,transparent);color:color-mix(in srgb,var(--gg-hue) 76%,var(--dsw-alias-label-primary));font-weight:500}',
+      /* ☆ 收藏钮：药丸最右一段；未收藏时 hover/focus 才显形 */
+      '.gg-pin{box-sizing:border-box;appearance:none;border:0;border-left:1px solid var(--dsw-alias-border-l2);border-radius:0 var(--dsw-radius-md) var(--dsw-radius-md) 0;background:0 0;color:var(--dsw-alias-label-caption);cursor:pointer;display:grid;place-items:center;width:20px;padding:0;opacity:0;align-self:stretch;transition:opacity .1s var(--ds-ease-in-out),color .1s var(--ds-ease-in-out),background-color .1s var(--ds-ease-in-out)}',
       '.gg-cell:hover .gg-pin,.gg-cell:focus-within .gg-pin{opacity:1}',
       '.gg-pin.on{opacity:1;color:color-mix(in srgb,var(--gg-hue) 82%,var(--dsw-alias-label-primary))}',
       '.gg-pin:hover{background:var(--dsw-alias-interactive-bg-hover)}',
-      '.gg-pin:focus-visible{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
-      /* 常用视图顶部小标题：说明这一页是按 provider 分组的常用模型 */
-      '.gg-favHead{align-items:center;gap:6px;padding:1px 2px 7px;font-family:var(--ds-font-family-code);font-size:10px;line-height:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--dsw-alias-label-caption);display:flex}',
-      '.gg-favHeadIcon{display:grid;place-items:center;color:color-mix(in srgb,var(--gg-hue) 72%,var(--dsw-alias-label-caption))}',
+      '.gg-pin:focus-visible{box-shadow:inset 0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
       '.gg-favNote{color:var(--dsw-alias-label-tertiary);padding:2px 2px 8px;font-size:12px;line-height:18px}',
       '.gg-noteSub{color:var(--dsw-alias-label-caption);margin-top:4px;font-size:11px;line-height:16px}',
 
@@ -282,7 +320,7 @@ window.__ModuleLoader__.load({
       '@keyframes gg-pop{from{opacity:0;transform:translateY(12px) scale(.95)}to{opacity:1;transform:none}}',
       '@keyframes gg-twinkle{0%,100%{opacity:var(--twmin,.15)}50%{opacity:var(--twmax,.6)}}',
       '@media (max-width:560px){.gg-card{width:min(420px,100%)}.gg-title{font-size:16px}.gg-hint{display:none}}',
-      '@media (prefers-reduced-motion:reduce){.gg-fab,.gg-chev,.gg-chip,.gg-tab,.gg-pin,.gg-star,.gg-mask:after,.gg-card,.gg-spin{animation:none;transition:none}}'
+      '@media (prefers-reduced-motion:reduce){.gg-fab,.gg-chev,.gg-chip,.gg-cell,.gg-eff,.gg-tab,.gg-pin,.gg-star,.gg-mask:after,.gg-card,.gg-spin{animation:none;transition:none}}'
     ].join('');
 
     let stylesReady = false;
@@ -327,13 +365,34 @@ window.__ModuleLoader__.load({
       const groups = state.groups || EMPTY;
       const favs = useFavs();
       const current = props.current;
+      const [query, setQuery] = react.useState('');
+      const searchRef = react.useRef(null);
+      const q = query.trim().toLowerCase();
+      const matchName = (name) => !q || String(name).toLowerCase().includes(q);
+      const matchModel = (m) => matchName(m.name) || matchName(m.id);
+      const matchGroup = (g) => matchName(g.name);
       const curGroup = current ? groups.find((g) => g.id === current.provider) || null : null;
       const curModel = curGroup ? (curGroup.models || EMPTY).find((m) => m.id === current.model) || null : null;
+      const curReasoning = curModel && curModel.reasoning;
+      const curEffortId = current ? (current.reasoningEffort !== undefined ? current.reasoningEffort : (curReasoning && curReasoning.defaultEffort)) : undefined;
+      const curEffortName = !curReasoning ? null : curEffortId === undefined ? t('effort.providerDefault') : ((curReasoning.efforts.find((e) => e.id === curEffortId) || {}).name || curEffortId);
       /* 「全部」= 只显示手动 star 的常用模型，且**按 provider 分组**：每个有常用
          模型的 provider 一块，块头写出 provider 名（同名模型靠块头区分）。
-         「具体 provider」= 该 provider 的全部可用模型块。空 provider 一律剔除。 */
+         「具体 provider」= 该 provider 的全部可用模型块。空 provider 一律剔除。
+         搜索词对两种视图都生效：匹配模型名/id，或整块匹配 provider 名。 */
+      const searchMode = q !== '';
       let rows = EMPTY;
-      if (props.tab !== null) {
+      if (searchMode) {
+        /* 搜索是**全局**的，不缩在当前视图里：所有 provider 一起搜，
+           结果仍按 provider 分块（同名模型靠块头区分），占据整个内容区。 */
+        const out = [];
+        for (const g of groups) {
+          const groupHit = matchGroup(g);
+          const models = (g.models || EMPTY).filter((m) => groupHit || matchModel(m));
+          if (models.length) out.push({ id: g.id, name: g.name, models });
+        }
+        rows = out;
+      } else if (props.tab !== null) {
         rows = groups.filter((g) => g.id === props.tab && (g.models || EMPTY).length > 0);
       } else if (favs.length) {
         const out = [];
@@ -352,6 +411,22 @@ window.__ModuleLoader__.load({
       });
       const sweeping = react.useRef(false);
       const veilRef = react.useRef(null);
+      const [kbFocus, setKbFocus] = react.useState(false);
+      /* 顶部 tab 的 id 序列（null = 全部）。方向键在 tab 区直接切换 provider。 */
+      const tabIds = [null, ...groups.map((g) => g.id)];
+      const focusTabButton = (id) => {
+        const sel = id === null ? '[data-gg-tab="__all__"]' : '[data-gg-tab="' + id + '"]';
+        const el = veilRef.current && veilRef.current.querySelector(sel);
+        if (el) el.focus();
+      };
+      /* 点/选 tab 时退出全局搜索，回到该视图。 */
+      const activateTab = (id) => { if (query !== '') setQuery(''); props.onTab(id); };
+      const stepTab = (delta) => {
+        const at = Math.max(0, tabIds.indexOf(props.tab));
+        const next = tabIds[Math.min(Math.max(0, at + delta), tabIds.length - 1)];
+        activateTab(next);
+        requestAnimationFrame(() => focusTabButton(next));
+      };
 
       const nP = rows.length;
       const fr = nP ? Math.min(Math.max(0, focus.p), nP - 1) : 0;
@@ -359,14 +434,19 @@ window.__ModuleLoader__.load({
       const nC = block ? block.models.length : 0;
       const fc = nC ? Math.min(Math.max(0, focus.c), nC - 1) : 0;
 
-      function commit(p, c) {
+      /** 提交一次选择；effort 省略时用该模型声明的默认档。 */
+      function commit(p, c, effort) {
         const g = rows[p];
         const m = g && g.models[c];
         if (!m) return;
-        /* 常用块里的模型自带 provider；provider 块里的用块 id。 */
-        props.onSelect({ provider: m.provider || g.id, model: m.id });
+        const selection = { provider: m.provider || g.id, model: m.id };
+        const chosen = effort !== undefined ? effort : (m.reasoning && m.reasoning.defaultEffort);
+        if (chosen !== undefined) selection.reasoningEffort = chosen;
+        props.onSelect(selection);
       }
       const settle = (p, c) => { commit(p, c); props.onClose(); };
+      /* 思考强度分段：点哪档就带哪档提交（同一个 pill 内直接完成模型+强度）。 */
+      const settleEffort = (p, c, effort) => { commit(p, c, effort); props.onClose(); };
       /* 方向键移动"真焦点"：状态只改 tabIndex 不搬 DOM 焦点，键盘环不会动，
          所以这里同时把 DOM 焦点移到目标 chip（并让 .gg-focus 画环）。 */
       const focusCell = (p, c) => {
@@ -383,6 +463,8 @@ window.__ModuleLoader__.load({
       /* 取消最后一个常用后 chip 全部卸载，焦点会掉到 body——收回弹窗，
          这样 Esc/方向键仍可用（点击遮罩关闭本来就不依赖焦点）。 */
       react.useEffect(() => { if (!rows.length && veilRef.current) veilRef.current.focus(); }, [rows.length]);
+      /* 搜索词变化 → 键盘焦点回到第一条可见结果，Enter 直接选它。 */
+      react.useEffect(() => { setFocus({ p: 0, c: 0 }); }, [query]);
 
       /**
        * 鼠标拖拽扫选：pointerdown 即提交并跟随，释放时收手（关闭）。
@@ -410,6 +492,33 @@ window.__ModuleLoader__.load({
         const k = e.key;
         if (k === 'Escape') { e.preventDefault(); e.stopPropagation(); props.onClose(); return; }
         const target = e.target;
+        /* 搜索框里打字时把按键还给原生输入（Enter=选第一个可见模型）；
+           '/' 是聚焦搜索框的快捷键（焦点在按钮/网格时）。 */
+        const inField = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable === true);
+        if (inField) {
+          if (k === 'Enter') {
+            const g0 = rows[fr];
+            const m0 = g0 && g0.models[fc];
+            if (m0) { e.preventDefault(); settle(fr, fc); }
+          } else if (k === 'ArrowDown') {
+            e.preventDefault();
+            setKbFocus(true);
+            focusCell(0, 0);
+          }
+          return;
+        }
+        if (k === '/') { e.preventDefault(); setKbFocus(true); if (searchRef.current) searchRef.current.focus(); return; }
+        if (/^Arrow|^Home$|^End$|^Tab$|^Enter$/.test(k)) setKbFocus(true);
+        /* tab 区：左右方向键直接切换 provider（不另开子菜单/不跳焦点）。 */
+        const onTabBtn = !!(target && target.closest && target.closest('.gg-tab'));
+        if (onTabBtn) {
+          if (k === 'ArrowLeft') { e.preventDefault(); stepTab(-1); return; }
+          if (k === 'ArrowRight') { e.preventDefault(); stepTab(1); return; }
+          if (k === 'Home') { e.preventDefault(); stepTab(-tabIds.length); return; }
+          if (k === 'End') { e.preventDefault(); stepTab(tabIds.length); return; }
+          if (k === 'ArrowDown') { e.preventDefault(); focusCell(fr, fc); return; }
+          return;
+        }
         const chipEl = target && target.closest && target.closest('.gg-chip');
         const onChip = !!chipEl;
         const onButton = !!(target && target.closest && target.closest('button'));
@@ -439,7 +548,8 @@ window.__ModuleLoader__.load({
         if (k === 'ArrowRight') { e.preventDefault(); focusCell(fr, Math.min(nC - 1, fc + 1)); return; }
         if (k === 'ArrowLeft') { e.preventDefault(); focusCell(fr, Math.max(0, fc - 1)); return; }
         if (k === 'ArrowDown') { e.preventDefault(); focusCell(Math.min(nP - 1, fr + 1), fc); return; }
-        if (k === 'ArrowUp') { e.preventDefault(); focusCell(Math.max(0, fr - 1), fc); return; }
+        /* 网格最上面再按 ↑ 回到 provider tab 区（再按 ←/→ 就是切 provider）。 */
+        if (k === 'ArrowUp') { e.preventDefault(); if (fr === 0) focusTabButton(props.tab); else focusCell(fr - 1, fc); return; }
         if (k === 'Home') { e.preventDefault(); focusCell(fr, 0); return; }
         if (k === 'End') { e.preventDefault(); focusCell(fr, nC - 1); }
       }
@@ -468,12 +578,19 @@ window.__ModuleLoader__.load({
           const prov = m.provider || g.id;
           const sel = !!current && current.provider === prov && current.model === m.id;
           const fav = isFav(favs, prov, m.id);
-          return j('div', { key: prov + '/' + m.id, className: 'gg-cell' }, [
+          const reasoning = m.reasoning;
+          const efforts = reasoning && Array.isArray(reasoning.efforts) ? reasoning.efforts : EMPTY;
+          /* 当前生效档 = 显式选择 > 模型默认档；只有当前模型的那一档高亮。 */
+          const effSel = sel ? (current.reasoningEffort !== undefined ? current.reasoningEffort : (reasoning && reasoning.defaultEffort)) : undefined;
+          return j('div', {
+            key: prov + '/' + m.id,
+            className: 'gg-cell' + (sel ? ' on' : ''),
+            style: { '--gg-hue': hueForProvider(prov) }
+          }, [
             j('button', {
               key: 'chip',
               type: 'button',
-              className: 'gg-chip' + (sel ? ' on' : '') + (p === fr && c === fc ? ' gg-focus' : ''),
-              style: { '--gg-hue': hueForProvider(prov) },
+              className: 'gg-chip',
               'aria-label': t('grid.cell', { model: m.name }),
               'aria-pressed': sel,
               'data-gg-p': p,
@@ -486,6 +603,18 @@ window.__ModuleLoader__.load({
               onFocus: () => { if (fr !== p || fc !== c) setFocus({ p, c }); },
               onClick: () => settle(p, c)
             }, j('span', { key: 'nm', className: 'gg-chipName' }, m.name)),
+            /* 思考强度分列：同一颗 pill 内每档一枚可点分段，点它直接提交模型+档位。
+               未声明 efforts 的模型（本机大多数）没有这一段，pill 外观与原来一致。 */
+            ...efforts.map((eff) => j('button', {
+              key: 'eff:' + eff.id,
+              type: 'button',
+              className: 'gg-eff' + (effSel === eff.id ? ' on' : ''),
+              'aria-label': t('effort.cell', { effort: eff.name }),
+              'aria-pressed': effSel === eff.id,
+              tabIndex: -1,
+              onPointerDown: (e) => { e.stopPropagation(); },
+              onClick: (e) => { e.preventDefault(); e.stopPropagation(); settleEffort(p, c, eff.id); }
+            }, eff.name)),
             /* ☆ 与 chip 是兄弟 button（不能嵌套 button）。tabIndex=-1：键盘用 F 收录/移出。 */
             j('button', {
               key: 'pin',
@@ -504,8 +633,9 @@ window.__ModuleLoader__.load({
       return j('div', {
         id: 'gg-veil',
         ref: veilRef,
-        className: 'gg-veil',
+        className: 'gg-veil' + (kbFocus ? ' gg-kb' : ''),
         role: 'dialog',
+        onPointerDown: () => { if (kbFocus) setKbFocus(false); },
         'aria-modal': true,
         'aria-label': t('dialog.aria'),
         tabIndex: -1,
@@ -528,50 +658,75 @@ window.__ModuleLoader__.load({
               j('button', { key: 'cl', type: 'button', className: 'gg-close', 'aria-label': t('dialog.close'), onClick: () => props.onClose() }, closeX())
             ])
           ]),
-          /* 顶部 tab 维持原样：全部 / 各 provider */
+          /* 搜索框放在 provider 选项上面；搜索是**全局**的，不缩在当前视图里。 */
+          j('div', { key: 'searchRow', className: 'gg-searchRow' }, [
+            j('input', {
+              key: 'q',
+              ref: searchRef,
+              className: 'gg-search',
+              type: 'search',
+              value: query,
+              placeholder: t('search.placeholder'),
+              'aria-label': t('search.placeholder'),
+              onChange: (e) => setQuery(e.target.value)
+            }),
+            query
+              ? j('button', { key: 'x', type: 'button', className: 'gg-searchClear', 'aria-label': t('search.clear'), onClick: () => { setQuery(''); if (searchRef.current) searchRef.current.focus(); } }, closeX())
+              : null
+          ]),
+          /* 顶部 tab：全部 / 各 provider。搜索时不高亮任何 tab（结果跨 provider）；
+             点 tab 或方向键选 provider 都会退出搜索、回到该视图。 */
           j('div', { key: 'tabs', className: 'gg-tabs', role: 'tablist', 'aria-label': t('tab.aria') }, [
             j('button', {
               key: 'all',
               type: 'button',
               role: 'tab',
-              className: 'gg-tab' + (props.tab === null ? ' on' : ''),
-              'aria-selected': props.tab === null,
-              onClick: () => props.onTab(null)
-            }, t('tab.all')),
+              'data-gg-tab': '__all__',
+              className: 'gg-tab' + (!searchMode && props.tab === null ? ' on' : ''),
+              'aria-selected': !searchMode && props.tab === null,
+              onClick: () => activateTab(null)
+            }, [
+              j('span', { key: 'i', className: 'gg-tabStar', 'aria-hidden': true }, starIcon(true, 10)),
+              j('span', { key: 't' }, t('tab.all'))
+            ]),
             ...groups.map((g) => j('button', {
               key: g.id,
               type: 'button',
               role: 'tab',
-              className: 'gg-tab' + (props.tab === g.id ? ' on' : ''),
-              'aria-selected': props.tab === g.id,
+              'data-gg-tab': g.id,
+              className: 'gg-tab' + (!searchMode && props.tab === g.id ? ' on' : ''),
+              'aria-selected': !searchMode && props.tab === g.id,
               style: { '--gg-hue': hueForProvider(g.id) },
-              onClick: () => props.onTab(g.id)
+              onClick: () => activateTab(g.id)
             }, g.name))
           ]),
-          /* 全部 = 只列打了 star 的常用模型；provider tab = 该 provider 全量模型 */
-          props.tab === null
+          /* 搜索中：全局结果按 provider 分块占满内容区；否则 全部=常用 / provider=全量。 */
+          searchMode
             ? j('div', { key: 'body', className: 'gg-body' }, [
                 j('div', { key: 'scroll', className: 'gg-scroll' }, rows.length
-                  ? [
-                      j('div', { key: 'favhead', className: 'gg-favHead' }, [
-                        j('span', { key: 'i', className: 'gg-favHeadIcon', 'aria-hidden': true }, starIcon(true, 10)),
-                        j('span', { key: 't' }, t('fav.title'))
-                      ]),
-                      ...rows.map((g, p) => renderBlock(g, p))
-                    ]
-                  : j('div', { key: 'favempty', className: 'gg-favNote' }, [
-                      j('div', { key: 't1' }, state.status === 'loading' ? t('grid.loading') : t('fav.empty')),
-                      state.status === 'loading' ? null : j('div', { key: 't2', className: 'gg-noteSub' }, t('fav.emptyHint'))
+                  ? rows.map((g, p) => renderBlock(g, p))
+                  : j('div', { key: 'sempty', className: 'gg-note' }, [
+                      j('div', { key: 'txt' }, state.status === 'loading' ? t('grid.loading') : t('search.empty', { q: query.trim() })),
+                      state.status === 'error' ? j('button', { key: 'ry', type: 'button', className: 'gg-retry', style: { marginTop: 6 }, onClick: () => props.onReload() }, t('grid.retry')) : null
                     ]))
               ])
-            : rows.length
+            : props.tab === null
               ? j('div', { key: 'body', className: 'gg-body' }, [
-                  j('div', { key: 'scroll', className: 'gg-scroll' }, rows.map((g, p) => renderBlock(g, p)))
+                  j('div', { key: 'scroll', className: 'gg-scroll' }, rows.length
+                    ? rows.map((g, p) => renderBlock(g, p))
+                    : j('div', { key: 'favempty', className: 'gg-favNote' }, [
+                        j('div', { key: 't1' }, state.status === 'loading' ? t('grid.loading') : t('fav.empty')),
+                        state.status === 'loading' ? null : j('div', { key: 't2', className: 'gg-noteSub' }, t('fav.emptyHint'))
+                      ]))
                 ])
-              : j('div', { key: 'empty', className: 'gg-note' }, [
-                  j('div', { key: 'txt' }, state.status === 'loading' ? t('grid.loading') : t('grid.empty')),
-                  state.status === 'error' ? j('button', { key: 'ry', type: 'button', className: 'gg-retry', style: { marginTop: 6 }, onClick: () => props.onReload() }, t('grid.retry')) : null
-                ]),
+              : rows.length
+                ? j('div', { key: 'body', className: 'gg-body' }, [
+                    j('div', { key: 'scroll', className: 'gg-scroll' }, rows.map((g, p) => renderBlock(g, p)))
+                  ])
+                : j('div', { key: 'empty', className: 'gg-note' }, [
+                    j('div', { key: 'txt' }, state.status === 'loading' ? t('grid.loading') : t('grid.empty')),
+                    state.status === 'error' ? j('button', { key: 'ry', type: 'button', className: 'gg-retry', style: { marginTop: 6 }, onClick: () => props.onReload() }, t('grid.retry')) : null
+                  ]),
           /* 错误条 */
           state.error ? j('div', { key: 'err', className: 'gg-err' }, [
             j('span', { key: 'm' }, t('grid.error', { message: state.error })),
@@ -582,6 +737,7 @@ window.__ModuleLoader__.load({
             j('div', { key: 'cur', className: 'gg-cur', style: curGroup ? { '--gg-hue': hueForProvider(curGroup.id) } : null }, curModel ? [
               j('b', { key: 'm' }, curModel.name),
               j('span', { key: 's' }, ' · ' + curGroup.name),
+              curEffortName ? j('span', { key: 'e' }, ' · ' + curEffortName) : null,
               state.pending ? j('span', { key: 'p' }, ' · ' + t('status.pending')) : null
             ] : t('seat.fallback')),
             j('div', { key: 'hint', className: 'gg-hint' }, t('footer.hint'))
@@ -623,9 +779,14 @@ window.__ModuleLoader__.load({
       const groups = state.groups || EMPTY;
       const current = state.current || null;
       const curGroup = current ? groups.find((g) => g.id === current.provider) || null : null;
-      const curModel = curGroup ? curGroup.models.find((m) => m.id === current.model) || null : null;
+      const curModel = curGroup ? (curGroup.models || EMPTY).find((m) => m.id === current.model) || null : null;
+      /* 触发器药丸里同时写模型与思考强度（与原生 seat 同形）：只有模型声明了
+         reasoning efforts 才显示；未显式选档时显示默认档名。 */
+      const curReasoning = curModel && curModel.reasoning;
+      const curEffortId = current ? (current.reasoningEffort !== undefined ? current.reasoningEffort : (curReasoning && curReasoning.defaultEffort)) : undefined;
+      const effortName = !curReasoning ? null : curEffortId === undefined ? t('effort.providerDefault') : ((curReasoning.efforts.find((e) => e.id === curEffortId) || {}).name || curEffortId);
       const label = curModel ? curModel.name : (state.status === 'loading' ? t('seat.loading') : t('seat.fallback'));
-      const aria = curModel ? t('seat.aria', { model: curModel.name }) : t('seat.fallback');
+      const aria = curModel ? (effortName === null ? t('seat.aria', { model: curModel.name }) : t('seat.ariaEffort', { model: curModel.name, effort: effortName })) : t('seat.fallback');
 
       const close = () => {
         setOpen(false);
@@ -649,6 +810,7 @@ window.__ModuleLoader__.load({
         }, [
           j('span', { key: 'd', className: 'gg-provDot', 'aria-hidden': true }),
           j('span', { key: 'n', className: 'gg-name' }, label),
+          effortName === null ? null : j('span', { key: 'e', className: 'gg-fbEff' }, effortName),
           state.pending
             ? j('span', { key: 's', className: 'gg-spin', 'aria-hidden': true })
             : j('span', { key: 'c', className: 'gg-chev' + (open ? ' open' : ''), 'aria-hidden': true }, chevron())

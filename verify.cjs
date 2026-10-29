@@ -103,11 +103,10 @@ const checks = [
   [/--dsw-radius-sm/, '触发器沿用 composer 的 radius-sm'],
   [/height:28px/, '触发器沿用 composer 工具行 28px'],
   [/\.gg-card\{[^']*height:min\(640px,calc\(100dvh - 96px\)\)/, '卡片高度固定（切换 provider 不改窗口尺寸）'],
-  [/\.gg-chip:focus-visible,\.gg-chip\.gg-focus/, '键盘焦点环：.gg-focus 与 :focus-visible 同环'],
+  [/\.gg-kb \.gg-cell:focus-within/, '键盘焦点环只在键盘导航（.gg-kb）时出现'],
   [/focusCell\(fr, Math\.min\(nC - 1, fc \+ 1\)\)/, '方向键经 focusCell 搬 DOM 焦点（右）'],
   [/data-gg-p': p,/, 'chip 带 data-gg-p 定位属性'],
   [/data-gg-c': c,/, 'chip 带 data-gg-c 定位属性'],
-  [/\? ' gg-focus' : ''/, '当前键盘格渲染 gg-focus 类'],
   [/--dsw-radius-panel/, '卡片沿用 Modal 的 radius-panel'],
   [/--dsw-elevation-prominent/, '卡片沿用 Menu 的 elevation-prominent'],
   [/--dsw-alias-bg-mask-1/, '遮罩沿用 Modal mask-1'],
@@ -126,13 +125,33 @@ const checks = [
   [/localStorage\.getItem\(FAV_KEY\)/, '常用列表从 localStorage 读'],
   [/localStorage\.setItem\(FAV_KEY, JSON\.stringify\(next\)\)/, '常用列表写 localStorage'],
   [/if \(models\.length\) out\.push\(\{ id: g\.id, name: g\.name, fav: true, models \}\)/, '「全部」按 provider 分组（同名模型靠块头区分）'],
-  [/className: 'gg-favHead'/, '常用视图顶部「常用」小标题'],
+  [/className: 'gg-tabStar'/, '首家 tab 是星标 + 常用'],
   [/t\('grid\.favProvider'/, '常用块 aria 写出 provider 名'],
   [/m\.provider \|\| g\.id/, '常用块模型自带 provider（提交不张冠李戴）'],
   [/toggleFav\(prov, m\.id\)/, 'chip ☆ 按钮切换常用'],
+  /* ── 搜索栏 + 思考强度分列（2026-10-30）────────────────────────── */
+  [/className: 'gg-search'/, '弹窗顶部 search bar'],
+  [/searchRow[\s\S]*?tabs/, 'search bar 在 provider tab 上面'],
+  [/const searchMode = q !== '';/, '搜索单独成模式'],
+  [/className: 'gg-searchClear'/, '搜索框有清除按钮'],
+  [/matchModel = \(m\) => matchName\(m\.name\) \|\| matchName\(m\.id\)/, '搜索匹配模型名/id'],
+  [/matchGroup = \(g\) => matchName\(g\.name\)/, '整块命中 provider 名'],
+  [/if \(searchMode\) \{[\s\S]*?for \(const g of groups\)/, '搜索全局遍历所有 provider（不缩在当前视图）'],
+  [/rows\.map\(\(g, p\) => renderBlock\(g, p\)\)\s*\n\s*: j\('div', \{ key: 'sempty'/, '搜索结果占据内容区（provider 分块）'],
+  [/t\('search\.empty'/, '搜索无结果空态'],
+  [/isContentEditable === true/, '搜索框内按键归还原生输入'],
+  [/k === '\/'/, '/ 聚焦搜索框'],
+  [/const stepTab = \(delta\)/, 'tab 区方向键切换 provider'],
+  [/'data-gg-tab': g\.id/, 'provider tab 带 data-gg-tab 供方向键定位'],
+  [/if \(fr === 0\) focusTabButton\(props\.tab\)/, '网格顶端 ↑ 回到 provider tab'],
+  [/className: 'gg-eff'/, '思考强度在模型 pill 内分列'],
+  [/settleEffort\(p, c, eff\.id\)/, '点强度分段提交模型+档位'],
+  [/reasoningEffort/, '提交带 reasoningEffort'],
+  [/className: 'gg-fbEff'/, '触发器 pill 内显示当前思考强度'],
+  [/t\('effort\.cell'/, '强度分段 aria 含档位名'],
   [/'f' \|\| k === 'F'/, '键盘 F 切换常用'],
   [/props\.tab === null/, '全部视图只渲染常用块；provider tab 才渲染全量'],
-  [/t\('tab\.all'\)/, '首个 tab 仍为「全部」（不加第二个入口）'],
+  [/t\('tab\.all'\)/, '首个 tab 为「☆ 常用」（不加第二个入口）'],
 ];
 console.log('\n契约/规范检查：');
 for (const [re, label] of checks) {
@@ -140,6 +159,8 @@ for (const [re, label] of checks) {
 }
 /* 负向：不新增第二个 provider 入口（用户 2026-10-30 明确只要原 tab 一套入口）。 */
 if (/gg-pick/.test(SRC)) bad('不应新增 provider 索引行（.gg-pick）'); else okk('未新增第二个 provider 入口');
+/* 负向：常用视图顶部不再重复一行「☆ 常用」小标题（已并入 tab）。 */
+if (/gg-favHead/.test(SRC)) bad('常用视图顶部不应再有「☆ 常用」小标题行'); else okk('常用视图顶部没有重复的「☆ 常用」小标题');
 
 console.log('\n' + (fail ? '✗ ' + fail + ' 个失败' : '✓ 全部通过') + (warn ? '，' + warn + ' 个提示' : ''));
 process.exit(fail ? 1 : 0);
