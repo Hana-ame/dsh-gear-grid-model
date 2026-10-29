@@ -29,9 +29,9 @@ window.__ModuleLoader__.load({
            导航时出现（.gg-kb 作用域），鼠标打开/点 tab 时不会给任何模型画边框，
            避免"默认选中"的误读。
          · provider 颜色默认 = FNV-1a 哈希到 4 档主题色；**也支持手动指定，且可
-           自由设置**：点块头 8px 色点 → 四色预设 + 原生取色器（任意 #rrggbb）
-           + 「自动」（自动=删除覆盖、回落哈希）；存 localStorage，触发点/
-           块头/tab 激活色/选中高亮/遮罩染色同步。
+           自由设置**：点块头 8px 色点 → **一行 9 个预设色块**（4 主题色 + 5 个
+           作用域字面色）+ 原生取色器（任意 #rrggbb）+「自动」（删除覆盖回落哈希）；
+           存 localStorage，触发点/块头/tab 激活色/选中高亮/遮罩染色同步。
          · 顶部 tab 是「☆ 常用」+ 各 provider（原「全部」已改名「常用」）。
            「☆ 常用」不再平铺所有模型，只显示**手动打了 star 的常用模型**，
            并按 provider 分组（块头写出 provider 名，同名模型靠块头区分），
@@ -104,6 +104,11 @@ window.__ModuleLoader__.load({
       'hue.green': '绿',
       'hue.amber': '橙',
       'hue.purple': '紫',
+      'hue.cyan': '青',
+      'hue.teal': '蓝绿',
+      'hue.lime': '黄绿',
+      'hue.red': '红',
+      'hue.pink': '粉',
       'hue.pick': '选择颜色：{provider}',
       'hue.auto': '自动',
       'hue.custom': '自定义颜色…',
@@ -141,6 +146,11 @@ window.__ModuleLoader__.load({
       'hue.green': 'Green',
       'hue.amber': 'Amber',
       'hue.purple': 'Purple',
+      'hue.cyan': 'Cyan',
+      'hue.teal': 'Teal',
+      'hue.lime': 'Lime',
+      'hue.red': 'Red',
+      'hue.pink': 'Pink',
       'hue.pick': 'Pick a color for {provider}',
       'hue.auto': 'Auto',
       'hue.custom': 'Custom color…',
@@ -162,11 +172,18 @@ window.__ModuleLoader__.load({
     };
 
     /* ── provider 色相：FNV-1a 稳定映射到四个品牌色令牌，明暗自跟随 ── */
+    /* 预设色（append-only：已存 localStorage 的 slot 数字必须保持同一颜色）：
+       0 蓝 1 绿 2 橙 3 紫 为历史四档，4+ 为后加的预设。 */
     const HUES = [
       'var(--dsw-alias-link)',
       'var(--dsw-alias-state-success-primary)',
       'var(--dsw-alias-state-warn-primary)',
-      'var(--gg-hue-astra)'
+      'var(--gg-hue-astra)',
+      'var(--gg-hue-cyan)',
+      'var(--gg-hue-teal)',
+      'var(--gg-hue-lime)',
+      'var(--dsw-alias-state-error-primary)',
+      'var(--gg-hue-pink)'
     ];
     function hash(s) {
       let h = 2166136261 >>> 0;
@@ -174,10 +191,11 @@ window.__ModuleLoader__.load({
       return h;
     }
     /* ── provider 颜色：默认哈希，可手动指定（预设 4 档或任意自定义色）──
-       需求（2026-10-30）：颜色要能自己选 → 再追加「要能自由设置」。默认仍是
-       FNV-1a 哈希到 4 档；手动覆盖存 localStorage（键
-       dsh-gear-grid-model/provider-hues/v1，形状 {providerId: 0..3 | '#rrggbb'}）：
-       数字 = 四档预设，字符串 = 自定义颜色（任意 #rrggbb）。同一 provider 全局
+       需求（2026-10-30）：颜色要能自己选 →「要能自由设置」→「多点预设，一行里」。
+       默认是 FNV-1a 哈希到 HUES[0..3] 四个主题色；手动覆盖存 localStorage（键
+       dsh-gear-grid-model/provider-hues/v1，形状 {providerId: slot | '#rrggbb'}）：
+       数字 = 预设档位（HUES 下标，append-only 保证旧值不变色），
+       字符串 = 自定义颜色（任意 #rrggbb）。同一 provider 全局
        生效：触发器色点、块头色点、provider tab 激活色、选中 pill/强度分段高亮、
        遮罩星云染色都跟着走。选「自动」= 删除该 provider 覆盖项，回落到哈希。 */
     const HUE_KEY = PKG + '/provider-hues/v1';
@@ -220,12 +238,15 @@ window.__ModuleLoader__.load({
       else map[providerId] = value;
       writeHueMap(map);
     }
+    /* 默认哈希只落在前 4 个主题色上：新增预设色不能改变任何 provider 的旧默认色
+       （HUES 扩容曾让 DeepSeek 从绿变紫——就是取模长度变了）。 */
+    const HASH_SLOTS = 4;
     /** provider → 色相：手动覆盖优先（预设或任意色），否则稳定哈希。 */
     const hueForProvider = (providerId) => {
       const manual = readHueMap()[providerId];
       if (typeof manual === 'number') return HUES[manual];
       if (typeof manual === 'string') return manual;
-      return HUES[hash('prov/' + providerId) % HUES.length];
+      return HUES[hash('prov/' + providerId) % HASH_SLOTS];
     };
 
     /* ── 常用模型：手动收录 + localStorage 持久化 ──────────────────
@@ -293,7 +314,7 @@ window.__ModuleLoader__.load({
     /* ── 样式（单文件，data-plugin-css 注入） ─────────────────────── */
     const CSS = [
       /* 自定义色相在自身作用域内定义，不外泄；默认值保证未派生时不炸 */
-      '.gg-seat,.gg-veil{--gg-hue:var(--dsw-alias-label-caption);--gg-hue-astra:#b78bfa}',
+      '.gg-seat,.gg-veil{--gg-hue:var(--dsw-alias-label-caption);--gg-hue-astra:#b78bfa;--gg-hue-cyan:#38bdf8;--gg-hue-teal:#2dd4bf;--gg-hue-lime:#a3e635;--gg-hue-pink:#f472b6}',
       '.gg-seat{min-width:0;position:relative}',
       '.gg-fab{box-sizing:border-box;appearance:none;border-radius:var(--dsw-radius-sm);min-width:0;max-width:min(280px,40cqw);height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:1px solid var(--dsw-alias-border-l2);outline:none;align-items:center;gap:6px;padding:0 5px 0 7px;font-size:13px;font-weight:400;line-height:20px;display:flex;transition:background-color var(--ds-transition-duration) var(--ds-ease-in-out),border-color var(--ds-transition-duration) var(--ds-ease-in-out),box-shadow var(--ds-transition-duration) var(--ds-ease-in-out)}',
       '.gg-fab:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}',
@@ -305,7 +326,7 @@ window.__ModuleLoader__.load({
       '.gg-provDotBtn{box-sizing:border-box;appearance:none;border:0;background:0 0;margin:0;padding:2px;width:16px;height:16px;border-radius:var(--dsw-radius-sm);cursor:pointer;outline:none;display:grid;place-items:center;flex:none}',
       '.gg-provDotBtn:hover{background:var(--dsw-alias-interactive-bg-hover)}',
       '.gg-provDotBtn:focus-visible{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
-      '.gg-hueRow{align-items:center;gap:7px;margin:0 0 8px;display:flex;flex-wrap:wrap}',
+      '.gg-hueRow{align-items:center;gap:6px;margin:0 0 8px;display:flex;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px}',
       '.gg-hueSwatch{box-sizing:border-box;appearance:none;width:16px;height:16px;border-radius:50%;border:1px solid color-mix(in srgb,var(--gg-sw) 55%,var(--dsw-alias-border-l3));background:var(--gg-sw);cursor:pointer;padding:0;outline:none}',
       '.gg-hueSwatch.on{box-shadow:0 0 0 2px var(--dsw-alias-bg-layer-2),0 0 0 4px color-mix(in srgb,var(--gg-sw) 70%,transparent)}',
       '.gg-hueSwatch:focus-visible{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
@@ -456,7 +477,7 @@ window.__ModuleLoader__.load({
       useHueMap();
       const current = props.current;
       /* 四档色相的可读名（给颜色选择器做 aria/title；字面 t() 便于静态自检）。 */
-      const hueLabels = [t('hue.blue'), t('hue.green'), t('hue.amber'), t('hue.purple')];
+      const hueLabels = [t('hue.blue'), t('hue.green'), t('hue.amber'), t('hue.purple'), t('hue.cyan'), t('hue.teal'), t('hue.lime'), t('hue.red'), t('hue.pink')];
       const [query, setQuery] = react.useState('');
       const [hueOpen, setHueOpen] = react.useState(null);
       const searchRef = react.useRef(null);

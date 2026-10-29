@@ -17,7 +17,7 @@
 - **provider tab** —— 每个 provider 一个 tab（如 *SenseNova · Key Pool*、*SiliconFlow · Key Pool*、*DeepSeek*、*CodeArts Agent*），显示该 provider 的全部可用模型（分组）。
 - **药丸 = 模型 + 思考强度分段** —— 每个模型一颗完整药丸：名字 + 思考强度分段（有适配器声明 efforts 的模型才有）+ ☆；点分段设推理等级，一次点击同时定好模型与等级。
 - **键盘友好** —— `←` `→` `↑` `↓` 移动焦点环，`Enter` 选择，`F` 收藏，`/` 聚焦搜索框，`Esc` 关闭。
-- **provider 颜色可自选** —— 默认颜色由 provider id 哈希到四档主题色；**点 provider 块头的 8px 色点**可以改：四档预设 + 原生取色器（任意颜色）+「自动」回退，覆盖存 localStorage。
+- **provider 颜色可自选** —— 默认颜色由 provider id 哈希到四档主题色；**点 provider 块头的 8px 色点**可以改：9 个预设色块（一行排开）+ 原生取色器（任意颜色）+「自动」回退，覆盖存 localStorage。
 - **跟随主题** —— 视觉只用 DSH 主题令牌（`--dsw-*`），宇宙色相用 `color-mix` 派生，自动跟随明暗色板。
 
 ## 截图
