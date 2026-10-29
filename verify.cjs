@@ -1,9 +1,9 @@
-/* 静态自检：locale key 覆盖、CSS 令牌存在性、CSS 结构配平。
-   用法: node verify.js */
+/* 静态自检：locale key 覆盖、CSS 令牌存在性、CSS 结构配平、常用模型契约。
+   用法: node verify.cjs（在包目录内，ROOT 即脚本所在目录） */
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = '/mnt/e/knowledge-base/.dsh-bundles/gear-grid-model';
+const ROOT = __dirname;
 const SRC = fs.readFileSync(path.join(ROOT, 'client.js'), 'utf8');
 const THEME = fs.readFileSync(
   '/home/lumin/.nvm/versions/node/v22.23.1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-ui-theme/lib/client.js',
@@ -121,11 +121,25 @@ const checks = [
   [/directory\.select\(selection\)/, '提交走 directory.select'],
   [/data-gg-hidden/, '折叠原生 seat 为幂等标记'],
   [/prefers-reduced-motion/, 'reduced-motion 已处理'],
+  /* ── 常用模型（2026-10-29）────────────────────────────────────── */
+  [/const FAV_KEY = PKG \+ '\/favorites\/v1'/, '常用列表存储键（带 v1）'],
+  [/localStorage\.getItem\(FAV_KEY\)/, '常用列表从 localStorage 读'],
+  [/localStorage\.setItem\(FAV_KEY, JSON\.stringify\(next\)\)/, '常用列表写 localStorage'],
+  [/if \(models\.length\) out\.push\(\{ id: g\.id, name: g\.name, fav: true, models \}\)/, '「全部」按 provider 分组（同名模型靠块头区分）'],
+  [/className: 'gg-favHead'/, '常用视图顶部「常用」小标题'],
+  [/t\('grid\.favProvider'/, '常用块 aria 写出 provider 名'],
+  [/m\.provider \|\| g\.id/, '常用块模型自带 provider（提交不张冠李戴）'],
+  [/toggleFav\(prov, m\.id\)/, 'chip ☆ 按钮切换常用'],
+  [/'f' \|\| k === 'F'/, '键盘 F 切换常用'],
+  [/props\.tab === null/, '全部视图只渲染常用块；provider tab 才渲染全量'],
+  [/t\('tab\.all'\)/, '首个 tab 仍为「全部」（不加第二个入口）'],
 ];
 console.log('\n契约/规范检查：');
 for (const [re, label] of checks) {
   if (re.test(SRC)) okk(label); else bad('缺失：' + label);
 }
+/* 负向：不新增第二个 provider 入口（用户 2026-10-30 明确只要原 tab 一套入口）。 */
+if (/gg-pick/.test(SRC)) bad('不应新增 provider 索引行（.gg-pick）'); else okk('未新增第二个 provider 入口');
 
 console.log('\n' + (fail ? '✗ ' + fail + ' 个失败' : '✓ 全部通过') + (warn ? '，' + warn + ' 个提示' : ''));
 process.exit(fail ? 1 : 0);

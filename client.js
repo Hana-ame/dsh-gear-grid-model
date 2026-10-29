@@ -15,9 +15,12 @@ window.__ModuleLoader__.load({
            provider 选择栏与窗口位置/大小都不动，内容超出走内部滚动。
          · 内容：**按 provider 分块分区**——每个 provider 一个独立块
            （色点 + 名字 + 数量做块头，模型以自动换行的 chip 排列，名字不截断）
-         · 默认「全部」：所有 provider 的块一次平铺（一级菜单直出），
-           顶部的 provider tab 保留为筛选器（不改动选择机制本身）
-         · 无推理等级，不留推理纵轴；无图标、无额外辉光效果
+         · 顶部 tab 维持原样（全部 + 各 provider）。「全部」不再平铺所有模型，
+           只显示**手动打了 star 的常用模型**，并按 provider 分组（块头写出
+           provider 名，同名模型靠块头区分）；chip 右侧 ☆ / 键盘 F 收/取消，
+           localStorage 持久化，不按使用频率自动推断。
+         · 点具体 provider tab 后，才平铺**该 provider 的全部可用模型**。
+           整窗仍只有一套入口：原 tab；不另加 provider 索引或第二个「常用」tab。
        数据层：
          · 只贡献 conversation.input.right（list slot，零占用者），
            复用 ctx.modelDirectories —— 与 /model 命令、原生 seat 同源，
@@ -25,6 +28,10 @@ window.__ModuleLoader__.load({
          · 原生 conversation.input.model 是 single slot，不能重注册，
            因此折叠显示而不是卸载：原生模块照常提供 ModelDirectoryResolver
            与 /model 命令，本包只把它的触发器 display:none。
+        常用数据：
+         · 只存浏览器 localStorage（键 dsh-gear-grid-model/favorites/v1），
+           不写服务端、不改目录；手动指定，不按使用频率自动学习。
+           目录里已消失的旧条目读取时静默忽略（保留在存储里，provider 回来即恢复）。
        规范对齐：
          · 尺寸/字阶沿用 composer 工具行（28px / 13px / 20px 行高、radius-sm），
            卡片用 radius-panel + elevation-prominent + mask-1 + menu-backdrop-filter，
@@ -68,15 +75,21 @@ window.__ModuleLoader__.load({
       'dialog.eyebrow': 'GEAR GRID',
       'dialog.title': '选择模型',
       'dialog.close': '关闭',
-      'tab.aria': '筛选模型目录',
+      'tab.aria': '筛选模型目录：全部只列常用，或选单个 provider 看全量',
       'tab.all': '全部',
+      'fav.title': '常用',
+      'fav.add': '加入常用：{model}',
+      'fav.remove': '移出常用：{model}',
+      'fav.empty': '还没有常用模型。',
+      'fav.emptyHint': '点具体 provider 查看全部模型，把鼠标移到模型上点 ☆（或按 F）收录常用。',
       'grid.provider': '{provider}，{n} 个模型',
+      'grid.favProvider': '{provider}（常用），{n} 个模型',
       'grid.cell': '选择 {model}',
       'grid.empty': '没有可用的模型。',
       'grid.loading': '正在刷新模型列表…',
       'grid.error': '模型操作失败：{message}',
       'grid.retry': '重新加载',
-      'footer.hint': '←→↑↓ 移动 · Enter 选择 · Esc 关闭',
+      'footer.hint': '←→↑↓ 移动 · Enter 选择 · F 常用 · Esc 关闭',
       'status.pending': '正在应用…'
     };
     const en = {
@@ -87,15 +100,21 @@ window.__ModuleLoader__.load({
       'dialog.eyebrow': 'GEAR GRID',
       'dialog.title': 'Select model',
       'dialog.close': 'Close',
-      'tab.aria': 'Filter model catalog',
+      'tab.aria': 'Filter the catalog: All shows favorites only; a provider shows its full list',
       'tab.all': 'All',
+      'fav.title': 'Favorites',
+      'fav.add': 'Add to favorites: {model}',
+      'fav.remove': 'Remove from favorites: {model}',
+      'fav.empty': 'No favorite models yet.',
+      'fav.emptyHint': 'Open a provider to see its full list, then hover a model and click ☆ (or press F) to pin it.',
       'grid.provider': '{provider}, {n} models',
+      'grid.favProvider': '{provider} (favorites), {n} models',
       'grid.cell': 'Select {model}',
       'grid.empty': 'No models available.',
       'grid.loading': 'Refreshing model list…',
       'grid.error': 'Model action failed: {message}',
       'grid.retry': 'Reload',
-      'footer.hint': '←→↑↓ move · Enter select · Esc close',
+      'footer.hint': '←→↑↓ move · Enter select · F favorite · Esc close',
       'status.pending': 'Applying…'
     };
 
@@ -113,6 +132,68 @@ window.__ModuleLoader__.load({
     }
     /** provider → 色相：稳定，不随目录内模型列表变动。 */
     const hueForProvider = (providerId) => HUES[hash('prov/' + providerId) % HUES.length];
+
+    /* ── 常用模型：手动收录 + localStorage 持久化 ──────────────────
+       需求（2026-10-29）：首页只显示手动指定的常用模型，点具体 provider
+       才显示该 provider 的全部可用模型。常用列表**不按使用频率自动推断**，
+       唯一写入口是用户在 chip 右侧点 ☆（或键盘 F）——这就是"手动指定"。
+       存储键带 /v1，形状 [{provider, model}]，保持用户添加顺序。 */
+    const FAV_KEY = PKG + '/favorites/v1';
+    const favK = (provider, model) => provider + '\u0000' + model;
+    let favCache = null;
+    const favSubs = new Set();
+
+    function readFavs() {
+      if (favCache) return favCache;
+      let list = EMPTY;
+      try {
+        const raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(FAV_KEY);
+        const parsed = raw ? JSON.parse(raw) : EMPTY;
+        if (Array.isArray(parsed)) {
+          const seen = new Set();
+          list = parsed.filter((x) => x && typeof x.provider === 'string' && typeof x.model === 'string').filter((x) => {
+            const k = favK(x.provider, x.model);
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          }).map((x) => ({ provider: x.provider, model: x.model }));
+        }
+      } catch (e) {
+        /* 存储损坏/隐私模式：降级为无常用，不影响模型选择本身。 */
+        list = EMPTY;
+      }
+      favCache = list;
+      return favCache;
+    }
+
+    function writeFavs(next) {
+      favCache = next;
+      try {
+        if (typeof localStorage !== 'undefined') localStorage.setItem(FAV_KEY, JSON.stringify(next));
+      } catch (e) { /* 配额/隐私模式：本轮内存生效，持久化失败静默 */ }
+      for (const fn of [...favSubs]) { try { fn(); } catch (e) { /* 单个订阅者失败不拖垮其余 */ } }
+    }
+
+    /** useSyncExternalStore 订阅常用列表；getSnapshot 返回稳定引用（只在写时换新）。 */
+    function useFavs() {
+      return react.useSyncExternalStore(
+        (fn) => { favSubs.add(fn); return () => { favSubs.delete(fn); }; },
+        readFavs
+      );
+    }
+
+    function isFav(list, provider, model) {
+      const k = favK(provider, model);
+      return list.some((x) => favK(x.provider, x.model) === k);
+    }
+
+    function toggleFav(provider, model) {
+      const k = favK(provider, model);
+      const list = readFavs();
+      const i = list.findIndex((x) => favK(x.provider, x.model) === k);
+      if (i >= 0) writeFavs(list.filter((_, n) => n !== i));
+      else writeFavs([...list, { provider, model }]);
+    }
 
     /* ── 样式（单文件，data-plugin-css 注入） ─────────────────────── */
     const CSS = [
@@ -167,11 +248,25 @@ window.__ModuleLoader__.load({
       '.gg-blkH{gap:7px;align-items:center;margin:0 0 7px;display:flex}',
       '.gg-blkName{font-family:var(--ds-font-family-code);font-size:12px;line-height:18px;font-weight:500;color:var(--dsw-alias-label-primary);white-space:normal;overflow-wrap:anywhere;min-width:0;flex:0 1 auto}',
       '.gg-blkCount{flex:none;font-family:var(--ds-font-family-code);font-size:10px;line-height:15px;color:var(--dsw-alias-label-tertiary)}',
-      '.gg-blkM{gap:6px;flex-wrap:wrap;display:flex}',
-      '.gg-chip{box-sizing:border-box;max-width:100%;border-radius:var(--dsw-radius-md);cursor:pointer;touch-action:manipulation;background:var(--dsw-alias-bg-layer-3);border:1px solid var(--dsw-alias-border-l2);outline:none;padding:5px 10px;font-size:12px;line-height:16px;font-family:var(--ds-font-family-code);color:var(--dsw-alias-label-primary);white-space:normal;overflow-wrap:anywhere;text-align:left;transition:border-color .1s var(--ds-ease-in-out),background-color .1s var(--ds-ease-in-out)}',
+      '.gg-blkM{gap:6px;flex-wrap:wrap;display:flex;align-items:flex-start}',
+      /* 每个模型 = cell（chip 本体 + 右侧 ☆ 收藏钮，两枚兄弟 button，不嵌套） */
+      '.gg-cell{position:relative;display:inline-flex;max-width:100%}',
+      '.gg-chip{box-sizing:border-box;max-width:100%;display:inline-flex;align-items:center;gap:6px;border-radius:var(--dsw-radius-md);cursor:pointer;touch-action:manipulation;background:var(--dsw-alias-bg-layer-3);border:1px solid var(--dsw-alias-border-l2);outline:none;padding:5px 23px 5px 9px;font-size:12px;line-height:16px;font-family:var(--ds-font-family-code);color:var(--dsw-alias-label-primary);white-space:normal;overflow-wrap:anywhere;text-align:left;transition:border-color .1s var(--ds-ease-in-out),background-color .1s var(--ds-ease-in-out)}',
+      '.gg-chipName{min-width:0;overflow-wrap:anywhere}',
       '.gg-chip:hover{border-color:color-mix(in srgb,var(--gg-hue) 34%,var(--dsw-alias-border-l2))}',
       '.gg-chip.on{background:linear-gradient(155deg,color-mix(in srgb,var(--gg-hue) 18%,transparent),transparent 72%),var(--dsw-alias-bg-layer-3);border-color:color-mix(in srgb,var(--gg-hue) 55%,var(--dsw-alias-border-l2));color:color-mix(in srgb,var(--gg-hue) 72%,var(--dsw-alias-label-primary));font-weight:500}',
       '.gg-chip:focus-visible,.gg-chip.gg-focus{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
+      /* ☆ 收藏钮：常驻占位（chip 预留右 padding），未收藏时 hover/focus 才显形 */
+      '.gg-pin{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:19px;height:19px;padding:0;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-caption);cursor:pointer;display:grid;place-items:center;opacity:0;transition:opacity .1s var(--ds-ease-in-out),color .1s var(--ds-ease-in-out),background-color .1s var(--ds-ease-in-out)}',
+      '.gg-cell:hover .gg-pin,.gg-cell:focus-within .gg-pin{opacity:1}',
+      '.gg-pin.on{opacity:1;color:color-mix(in srgb,var(--gg-hue) 82%,var(--dsw-alias-label-primary))}',
+      '.gg-pin:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.gg-pin:focus-visible{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
+      /* 常用视图顶部小标题：说明这一页是按 provider 分组的常用模型 */
+      '.gg-favHead{align-items:center;gap:6px;padding:1px 2px 7px;font-family:var(--ds-font-family-code);font-size:10px;line-height:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--dsw-alias-label-caption);display:flex}',
+      '.gg-favHeadIcon{display:grid;place-items:center;color:color-mix(in srgb,var(--gg-hue) 72%,var(--dsw-alias-label-caption))}',
+      '.gg-favNote{color:var(--dsw-alias-label-tertiary);padding:2px 2px 8px;font-size:12px;line-height:18px}',
+      '.gg-noteSub{color:var(--dsw-alias-label-caption);margin-top:4px;font-size:11px;line-height:16px}',
 
       '.gg-foot{justify-content:space-between;align-items:center;gap:10px;margin:10px 0 0;padding:9px 24px 14px;border-top:.5px solid var(--dsw-alias-border-l2);display:flex}',
       '.gg-cur{font-family:var(--ds-font-family-code);font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary);text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}',
@@ -187,7 +282,7 @@ window.__ModuleLoader__.load({
       '@keyframes gg-pop{from{opacity:0;transform:translateY(12px) scale(.95)}to{opacity:1;transform:none}}',
       '@keyframes gg-twinkle{0%,100%{opacity:var(--twmin,.15)}50%{opacity:var(--twmax,.6)}}',
       '@media (max-width:560px){.gg-card{width:min(420px,100%)}.gg-title{font-size:16px}.gg-hint{display:none}}',
-      '@media (prefers-reduced-motion:reduce){.gg-fab,.gg-chev,.gg-chip,.gg-tab,.gg-star,.gg-mask:after,.gg-card,.gg-spin{animation:none;transition:none}}'
+      '@media (prefers-reduced-motion:reduce){.gg-fab,.gg-chev,.gg-chip,.gg-tab,.gg-pin,.gg-star,.gg-mask:after,.gg-card,.gg-spin{animation:none;transition:none}}'
     ].join('');
 
     let stylesReady = false;
@@ -202,10 +297,15 @@ window.__ModuleLoader__.load({
       stylesReady = true;
     }
 
-    /* ── 图标（仅触发器与关闭按钮的描边箭头；模型本身无图标） ─────── */
+    /* ── 图标（仅功能性的触发器箭头、关闭 ×、常用 ☆；模型本身无图标） ─ */
     const sv = (w, d, sw) => j('svg', { width: w, height: w, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: sw ?? 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }, j('path', { d: d }));
     const chevron = () => sv(12, 'M4 6.5 8 10.5 12 6.5');
     const closeX = () => sv(14, 'M3.75 3.75 12.25 12.25M12.25 3.75 3.75 12.25');
+    /** 常用 ☆：filled=true 为已收录（实心），否则描边；唯一新增图标，功能按钮。 */
+    const starIcon = (filled, size) => {
+      const w = size || 12;
+      return j('svg', { width: w, height: w, viewBox: '0 0 16 16', fill: filled ? 'currentColor' : 'none', stroke: 'currentColor', strokeWidth: filled ? 0 : 1.4, strokeLinejoin: 'round', 'aria-hidden': true }, j('path', { d: 'M8 1.9l1.85 3.78 4.15.6-3 2.95.7 4.17L8 11.42l-3.7 1.98.7-4.17-3-2.95 4.15-.6z' }));
+    };
 
     /** 星野：固定种子的伪随机分布，一次生成不重排。 */
     function makeStars(n) {
@@ -225,14 +325,29 @@ window.__ModuleLoader__.load({
       const t = props.t;
       const state = props.state;
       const groups = state.groups || EMPTY;
-      /* 可见块 = 全部（tab=null）或单个 provider；空目录组剔除。 */
-      const rows = (props.tab === null ? groups : groups.filter((g) => g.id === props.tab)).filter((g) => (g.models || EMPTY).length > 0);
+      const favs = useFavs();
       const current = props.current;
+      const curGroup = current ? groups.find((g) => g.id === current.provider) || null : null;
+      const curModel = curGroup ? (curGroup.models || EMPTY).find((m) => m.id === current.model) || null : null;
+      /* 「全部」= 只显示手动 star 的常用模型，且**按 provider 分组**：每个有常用
+         模型的 provider 一块，块头写出 provider 名（同名模型靠块头区分）。
+         「具体 provider」= 该 provider 的全部可用模型块。空 provider 一律剔除。 */
+      let rows = EMPTY;
+      if (props.tab !== null) {
+        rows = groups.filter((g) => g.id === props.tab && (g.models || EMPTY).length > 0);
+      } else if (favs.length) {
+        const out = [];
+        for (const g of groups) {
+          const models = (g.models || EMPTY).filter((m) => isFav(favs, g.id, m.id));
+          if (models.length) out.push({ id: g.id, name: g.name, fav: true, models });
+        }
+        rows = out;
+      }
 
       const [focus, setFocus] = react.useState(() => {
         const p = current ? rows.findIndex((g) => g.id === current.provider) : -1;
         const g = p >= 0 ? rows[p] : rows[0];
-        const c = g ? g.models.findIndex((m) => m.id === (current ? current.model : '')) : -1;
+        const c = g ? g.models.findIndex((m) => m.id === (current ? current.model : '') && (!m.provider || m.provider === current.provider)) : -1;
         return { p: p >= 0 ? p : 0, c: c >= 0 ? c : 0 };
       });
       const sweeping = react.useRef(false);
@@ -246,8 +361,10 @@ window.__ModuleLoader__.load({
 
       function commit(p, c) {
         const g = rows[p];
-        if (!g || !g.models[c]) return;
-        props.onSelect({ provider: g.id, model: g.models[c].id });
+        const m = g && g.models[c];
+        if (!m) return;
+        /* 常用块里的模型自带 provider；provider 块里的用块 id。 */
+        props.onSelect({ provider: m.provider || g.id, model: m.id });
       }
       const settle = (p, c) => { commit(p, c); props.onClose(); };
       /* 方向键移动"真焦点"：状态只改 tabIndex 不搬 DOM 焦点，键盘环不会动，
@@ -289,11 +406,31 @@ window.__ModuleLoader__.load({
       function onKey(e) {
         const k = e.key;
         if (k === 'Escape') { e.preventDefault(); e.stopPropagation(); props.onClose(); return; }
-        /* Tab 只在内容区"提交并返回"；内容区外（tab/关闭按钮）走原生焦点流。 */
-        if (k === 'Enter' || (k === 'Tab' && !!(e.target && e.target.closest && e.target.closest('.gg-scroll')))) {
-          e.preventDefault();
-          e.stopPropagation();
-          settle(fr, fc);
+        const target = e.target;
+        const chipEl = target && target.closest && target.closest('.gg-chip');
+        const onChip = !!chipEl;
+        const onButton = !!(target && target.closest && target.closest('button'));
+        /* 事件目标若是 chip，用该 chip 的 data-gg-p/c（鼠标点过/聚焦的格子）；
+           否则回落到键盘焦点状态。避免"焦点在 B 却提交了 A"的错位。 */
+        const p0 = chipEl ? Number(chipEl.getAttribute('data-gg-p')) : NaN;
+        const c0 = chipEl ? Number(chipEl.getAttribute('data-gg-c')) : NaN;
+        const cp = Number.isInteger(p0) ? p0 : fr;
+        const cc = Number.isInteger(c0) ? c0 : fc;
+        /* Enter/Tab 只在 chip 上"提交并归还焦点"；tab 与关闭按钮是原生
+           button，走浏览器默认激活，不在这里截获。 */
+        if (k === 'Enter') {
+          if (onChip || !onButton) { e.preventDefault(); e.stopPropagation(); settle(cp, cc); }
+          return;
+        }
+        if (k === 'Tab') {
+          if (onChip) { e.preventDefault(); e.stopPropagation(); settle(cp, cc); }
+          return;
+        }
+        /* F = 收录/移出当前聚焦模型的常用（与 chip 右侧 ☆ 等价，键盘可达入口）。 */
+        if (k === 'f' || k === 'F') {
+          const g = rows[cp];
+          const m = g && g.models[cc];
+          if (m) { e.preventDefault(); toggleFav(m.provider || g.id, m.id); }
           return;
         }
         if (k === 'ArrowRight') { e.preventDefault(); focusCell(fr, Math.min(nC - 1, fc + 1)); return; }
@@ -304,14 +441,62 @@ window.__ModuleLoader__.load({
         if (k === 'End') { e.preventDefault(); focusCell(fr, nC - 1); }
       }
 
-      const curGroup = current ? groups.find((g) => g.id === current.provider) || null : null;
-      const curModel = curGroup ? curGroup.models.find((m) => m.id === current.model) || null : null;
-
       const stars = STAR_FIELDS[0].map((s) => j('span', {
         key: s.key,
         className: 'gg-star',
         style: { left: s.left + '%', top: s.top + '%', width: s.size + 'px', height: s.size + 'px', '--twmin': s.min.toFixed(2), '--twmax': s.max.toFixed(2), '--twd': s.dur.toFixed(2) + 's', '--twdl': s.delay.toFixed(2) + 's' }
       }));
+
+      /** 一个 provider 块。常用视图复用同一渲染：只放打了 star 的模型，
+          块头照样写出 provider 名，同名模型靠块头区分。 */
+      const renderBlock = (g, p) => j('section', {
+        key: 'blk' + g.id,
+        className: 'gg-blk',
+        style: { '--gg-hue': hueForProvider(g.id) },
+        role: 'group',
+        'aria-label': g.fav ? t('grid.favProvider', { provider: g.name, n: g.models.length }) : t('grid.provider', { provider: g.name, n: g.models.length })
+      }, [
+        j('div', { key: 'hd', className: 'gg-blkH' }, [
+          j('span', { key: 'd', className: 'gg-provDot', 'aria-hidden': true }),
+          j('span', { key: 'n', className: 'gg-blkName' }, g.name),
+          j('span', { key: 'c', className: 'gg-blkCount' }, String(g.models.length))
+        ]),
+        j('div', { key: 'md', className: 'gg-blkM' }, g.models.map((m, c) => {
+          const prov = m.provider || g.id;
+          const sel = !!current && current.provider === prov && current.model === m.id;
+          const fav = isFav(favs, prov, m.id);
+          return j('div', { key: prov + '/' + m.id, className: 'gg-cell' }, [
+            j('button', {
+              key: 'chip',
+              type: 'button',
+              className: 'gg-chip' + (sel ? ' on' : '') + (p === fr && c === fc ? ' gg-focus' : ''),
+              style: { '--gg-hue': hueForProvider(prov) },
+              'aria-label': t('grid.cell', { model: m.name }),
+              'aria-pressed': sel,
+              'data-gg-p': p,
+              'data-gg-c': c,
+              tabIndex: p === fr && c === fc ? 0 : -1,
+              onPointerDown: (e) => cellDown(e, p, c),
+              onPointerEnter: () => cellEnter(p, c),
+              /* 鼠标/程序聚焦任何 chip 时同步键盘焦点状态：之后的 F/方向键
+                 从当前真实聚焦格子继续，而不是从初始 (0,0) 继续。 */
+              onFocus: () => { if (fr !== p || fc !== c) setFocus({ p, c }); },
+              onClick: () => settle(p, c)
+            }, j('span', { key: 'nm', className: 'gg-chipName' }, m.name)),
+            /* ☆ 与 chip 是兄弟 button（不能嵌套 button）。tabIndex=-1：键盘用 F 收录/移出。 */
+            j('button', {
+              key: 'pin',
+              type: 'button',
+              className: 'gg-pin' + (fav ? ' on' : ''),
+              tabIndex: -1,
+              'aria-label': fav ? t('fav.remove', { model: m.name }) : t('fav.add', { model: m.name }),
+              'aria-pressed': fav,
+              onPointerDown: (e) => { e.stopPropagation(); },
+              onClick: (e) => { e.preventDefault(); e.stopPropagation(); toggleFav(prov, m.id); }
+            }, starIcon(fav, 11))
+          ]);
+        }))
+      ]);
 
       return j('div', {
         id: 'gg-veil',
@@ -340,8 +525,8 @@ window.__ModuleLoader__.load({
               j('button', { key: 'cl', type: 'button', className: 'gg-close', 'aria-label': t('dialog.close'), onClick: () => props.onClose() }, closeX())
             ])
           ]),
-          /* provider 筛选 tab（机制不动；"全部"为默认一级视图） */
-          groups.length > 1 ? j('div', { key: 'tabs', className: 'gg-tabs', role: 'tablist', 'aria-label': t('tab.aria') }, [
+          /* 顶部 tab 维持原样：全部 / 各 provider */
+          j('div', { key: 'tabs', className: 'gg-tabs', role: 'tablist', 'aria-label': t('tab.aria') }, [
             j('button', {
               key: 'all',
               type: 'button',
@@ -359,47 +544,31 @@ window.__ModuleLoader__.load({
               style: { '--gg-hue': hueForProvider(g.id) },
               onClick: () => props.onTab(g.id)
             }, g.name))
-          ]) : null,
-          /* 分块分区：每个 provider 一块 */
-          rows.length
+          ]),
+          /* 全部 = 只列打了 star 的常用模型；provider tab = 该 provider 全量模型 */
+          props.tab === null
             ? j('div', { key: 'body', className: 'gg-body' }, [
-                j('div', { key: 'scroll', className: 'gg-scroll' }, rows.map((g, p) => [
-                  j('section', {
-                    key: 'blk' + g.id,
-                    className: 'gg-blk',
-                    style: { '--gg-hue': hueForProvider(g.id) },
-                    role: 'group',
-                    'aria-label': t('grid.provider', { provider: g.name, n: g.models.length })
-                  }, [
-                    j('div', { key: 'hd', className: 'gg-blkH' }, [
-                      j('span', { key: 'd', className: 'gg-provDot', 'aria-hidden': true }),
-                      j('span', { key: 'n', className: 'gg-blkName' }, g.name),
-                      j('span', { key: 'c', className: 'gg-blkCount' }, String(g.models.length))
-                    ]),
-                    j('div', { key: 'md', className: 'gg-blkM' }, g.models.map((m, c) => {
-                      const sel = !!current && current.provider === g.id && current.model === m.id;
-                      return j('button', {
-                        key: m.id,
-                        type: 'button',
-                        className: 'gg-chip' + (sel ? ' on' : '') + (p === fr && c === fc ? ' gg-focus' : ''),
-                        style: { '--gg-hue': hueForProvider(g.id) },
-                        'aria-label': t('grid.cell', { model: m.name }),
-                        'aria-pressed': sel,
-                        'data-gg-p': p,
-                        'data-gg-c': c,
-                        tabIndex: p === fr && c === fc ? 0 : -1,
-                        onPointerDown: (e) => cellDown(e, p, c),
-                        onPointerEnter: () => cellEnter(p, c),
-                        onClick: () => settle(p, c)
-                      }, m.name);
-                    }))
-                  ])
-                ]))
+                j('div', { key: 'scroll', className: 'gg-scroll' }, rows.length
+                  ? [
+                      j('div', { key: 'favhead', className: 'gg-favHead' }, [
+                        j('span', { key: 'i', className: 'gg-favHeadIcon', 'aria-hidden': true }, starIcon(true, 10)),
+                        j('span', { key: 't' }, t('fav.title'))
+                      ]),
+                      ...rows.map((g, p) => renderBlock(g, p))
+                    ]
+                  : j('div', { key: 'favempty', className: 'gg-favNote' }, [
+                      j('div', { key: 't1' }, state.status === 'loading' ? t('grid.loading') : t('fav.empty')),
+                      state.status === 'loading' ? null : j('div', { key: 't2', className: 'gg-noteSub' }, t('fav.emptyHint'))
+                    ]))
               ])
-            : j('div', { key: 'empty', className: 'gg-note' }, [
-                j('div', { key: 'txt' }, state.status === 'loading' ? t('grid.loading') : t('grid.empty')),
-                state.status === 'error' ? j('button', { key: 'ry', type: 'button', className: 'gg-retry', style: { marginTop: 6 }, onClick: () => props.onReload() }, t('grid.retry')) : null
-              ]),
+            : rows.length
+              ? j('div', { key: 'body', className: 'gg-body' }, [
+                  j('div', { key: 'scroll', className: 'gg-scroll' }, rows.map((g, p) => renderBlock(g, p)))
+                ])
+              : j('div', { key: 'empty', className: 'gg-note' }, [
+                  j('div', { key: 'txt' }, state.status === 'loading' ? t('grid.loading') : t('grid.empty')),
+                  state.status === 'error' ? j('button', { key: 'ry', type: 'button', className: 'gg-retry', style: { marginTop: 6 }, onClick: () => props.onReload() }, t('grid.retry')) : null
+                ]),
           /* 错误条 */
           state.error ? j('div', { key: 'err', className: 'gg-err' }, [
             j('span', { key: 'm' }, t('grid.error', { message: state.error })),
