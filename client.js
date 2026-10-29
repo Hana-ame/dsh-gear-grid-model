@@ -28,6 +28,10 @@ window.__ModuleLoader__.load({
          · 选择高亮只给**真正选中的模型**（.gg-cell.on）；键盘焦点环只在用键盘
            导航时出现（.gg-kb 作用域），鼠标打开/点 tab 时不会给任何模型画边框，
            避免"默认选中"的误读。
+         · provider 颜色默认 = FNV-1a 哈希到 4 档主题色；**也支持手动指定，且可
+           自由设置**：点块头 8px 色点 → 四色预设 + 原生取色器（任意 #rrggbb）
+           + 「自动」（自动=删除覆盖、回落哈希）；存 localStorage，触发点/
+           块头/tab 激活色/选中高亮/遮罩染色同步。
          · 顶部 tab 是「☆ 常用」+ 各 provider（原「全部」已改名「常用」）。
            「☆ 常用」不再平铺所有模型，只显示**手动打了 star 的常用模型**，
            并按 provider 分组（块头写出 provider 名，同名模型靠块头区分），
@@ -96,6 +100,13 @@ window.__ModuleLoader__.load({
       'search.clear': '清除搜索',
       'search.empty': '没有匹配「{q}」的模型。',
       'effort.providerDefault': '默认',
+      'hue.blue': '蓝',
+      'hue.green': '绿',
+      'hue.amber': '橙',
+      'hue.purple': '紫',
+      'hue.pick': '选择颜色：{provider}',
+      'hue.auto': '自动',
+      'hue.custom': '自定义颜色…',
       'effort.cell': '思考强度：{effort}',
       'seat.ariaEffort': '选择模型，当前 {model}，思考强度 {effort}',
       'fav.add': '加入常用：{model}',
@@ -126,6 +137,13 @@ window.__ModuleLoader__.load({
       'search.clear': 'Clear search',
       'search.empty': 'No models match "{q}".',
       'effort.providerDefault': 'Default',
+      'hue.blue': 'Blue',
+      'hue.green': 'Green',
+      'hue.amber': 'Amber',
+      'hue.purple': 'Purple',
+      'hue.pick': 'Pick a color for {provider}',
+      'hue.auto': 'Auto',
+      'hue.custom': 'Custom color…',
       'effort.cell': 'Reasoning effort: {effort}',
       'seat.ariaEffort': 'Select model, current {model}, reasoning effort {effort}',
       'fav.add': 'Add to favorites: {model}',
@@ -155,8 +173,60 @@ window.__ModuleLoader__.load({
       for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
       return h;
     }
-    /** provider → 色相：稳定，不随目录内模型列表变动。 */
-    const hueForProvider = (providerId) => HUES[hash('prov/' + providerId) % HUES.length];
+    /* ── provider 颜色：默认哈希，可手动指定（预设 4 档或任意自定义色）──
+       需求（2026-10-30）：颜色要能自己选 → 再追加「要能自由设置」。默认仍是
+       FNV-1a 哈希到 4 档；手动覆盖存 localStorage（键
+       dsh-gear-grid-model/provider-hues/v1，形状 {providerId: 0..3 | '#rrggbb'}）：
+       数字 = 四档预设，字符串 = 自定义颜色（任意 #rrggbb）。同一 provider 全局
+       生效：触发器色点、块头色点、provider tab 激活色、选中 pill/强度分段高亮、
+       遮罩星云染色都跟着走。选「自动」= 删除该 provider 覆盖项，回落到哈希。 */
+    const HUE_KEY = PKG + '/provider-hues/v1';
+    const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+    let hueCache = null;
+    const hueSubs = new Set();
+
+    function readHueMap() {
+      if (hueCache) return hueCache;
+      let map = {};
+      try {
+        const raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(HUE_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          for (const key of Object.keys(parsed)) {
+            const value = parsed[key];
+            if (typeof value === 'number' && value >= 0 && value < HUES.length && Math.floor(value) === value) map[key] = value;
+            else if (typeof value === 'string' && HEX_COLOR.test(value)) map[key] = value.toLowerCase();
+          }
+        }
+      } catch (e) { map = {}; }
+      hueCache = map;
+      return hueCache;
+    }
+    function writeHueMap(next) {
+      hueCache = next;
+      try { if (typeof localStorage !== 'undefined') localStorage.setItem(HUE_KEY, JSON.stringify(next)); } catch (e) { /* 静默降级 */ }
+      for (const fn of [...hueSubs]) { try { fn(); } catch (e) { /* 单个订阅者失败不拖垮其余 */ } }
+    }
+    function useHueMap() {
+      return react.useSyncExternalStore(
+        (fn) => { hueSubs.add(fn); return () => { hueSubs.delete(fn); }; },
+        readHueMap
+      );
+    }
+    /** value 省略/null = 恢复自动；number = 四档预设；'#rrggbb' = 任意自定义色。 */
+    function setProviderHue(providerId, value) {
+      const map = { ...readHueMap() };
+      if (value === undefined || value === null) delete map[providerId];
+      else map[providerId] = value;
+      writeHueMap(map);
+    }
+    /** provider → 色相：手动覆盖优先（预设或任意色），否则稳定哈希。 */
+    const hueForProvider = (providerId) => {
+      const manual = readHueMap()[providerId];
+      if (typeof manual === 'number') return HUES[manual];
+      if (typeof manual === 'string') return manual;
+      return HUES[hash('prov/' + providerId) % HUES.length];
+    };
 
     /* ── 常用模型：手动收录 + localStorage 持久化 ──────────────────
        需求（2026-10-29）：首页只显示手动指定的常用模型，点具体 provider
@@ -231,6 +301,25 @@ window.__ModuleLoader__.load({
       '.gg-fab[aria-expanded="true"]{border-color:var(--dsw-alias-border-l3)}',
       '.gg-fab:disabled{cursor:default;border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-dimmed)}',
       '.gg-provDot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--gg-hue);border:1px solid color-mix(in srgb,var(--gg-hue) 55%,var(--dsw-alias-border-l3))}',
+      /* 块头色点 = 颜色选择器入口；点开在块头下方出四色 + 自动 */
+      '.gg-provDotBtn{box-sizing:border-box;appearance:none;border:0;background:0 0;margin:0;padding:2px;width:16px;height:16px;border-radius:var(--dsw-radius-sm);cursor:pointer;outline:none;display:grid;place-items:center;flex:none}',
+      '.gg-provDotBtn:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.gg-provDotBtn:focus-visible{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
+      '.gg-hueRow{align-items:center;gap:7px;margin:0 0 8px;display:flex;flex-wrap:wrap}',
+      '.gg-hueSwatch{box-sizing:border-box;appearance:none;width:16px;height:16px;border-radius:50%;border:1px solid color-mix(in srgb,var(--gg-sw) 55%,var(--dsw-alias-border-l3));background:var(--gg-sw);cursor:pointer;padding:0;outline:none}',
+      '.gg-hueSwatch.on{box-shadow:0 0 0 2px var(--dsw-alias-bg-layer-2),0 0 0 4px color-mix(in srgb,var(--gg-sw) 70%,transparent)}',
+      '.gg-hueSwatch:focus-visible{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
+      '.gg-hueAuto{box-sizing:border-box;appearance:none;border:1px solid var(--dsw-alias-border-l2);background:0 0;color:var(--dsw-alias-label-tertiary);border-radius:999px;padding:1px 8px;font-size:10px;line-height:14px;font-family:var(--ds-font-family-code);cursor:pointer;outline:none}',
+      '.gg-hueAuto:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.gg-hueAuto.on{color:var(--dsw-alias-label-primary);border-color:color-mix(in srgb,var(--gg-hue) 48%,var(--dsw-alias-border-l2));background:color-mix(in srgb,var(--gg-hue) 14%,transparent)}',
+      '.gg-hueAuto:focus-visible{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
+      /* 任意自定义色：原生取色器做成第 5 颗圆色块 */
+      '.gg-hueCustom{box-sizing:border-box;appearance:none;width:18px;height:18px;padding:0;border:1px solid var(--dsw-alias-border-l3);border-radius:50%;background:0 0;cursor:pointer;outline:none;overflow:hidden;flex:none}',
+      '.gg-hueCustom::-webkit-color-swatch-wrapper{padding:0}',
+      '.gg-hueCustom::-webkit-color-swatch{border:0;border-radius:50%}',
+      '.gg-hueCustom::-moz-color-swatch{border:0;border-radius:50%}',
+      '.gg-hueCustom.on{box-shadow:0 0 0 2px var(--dsw-alias-bg-layer-2),0 0 0 4px color-mix(in srgb,var(--gg-hue) 70%,transparent)}',
+      '.gg-hueCustom:focus-visible{box-shadow:0 0 0 var(--dsw-focus-ring-width,2px) var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
       '.gg-name{color:inherit;text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}',
       '.gg-fbEff{flex:none;color:var(--dsw-alias-label-caption);font-family:var(--ds-font-family-code);font-size:11px;line-height:20px}',
       '.gg-chev{flex:none;transition:transform .12s var(--ds-ease-in-out);color:var(--dsw-alias-label-caption)}',
@@ -364,8 +453,12 @@ window.__ModuleLoader__.load({
       const state = props.state;
       const groups = state.groups || EMPTY;
       const favs = useFavs();
+      useHueMap();
       const current = props.current;
+      /* 四档色相的可读名（给颜色选择器做 aria/title；字面 t() 便于静态自检）。 */
+      const hueLabels = [t('hue.blue'), t('hue.green'), t('hue.amber'), t('hue.purple')];
       const [query, setQuery] = react.useState('');
+      const [hueOpen, setHueOpen] = react.useState(null);
       const searchRef = react.useRef(null);
       const q = query.trim().toLowerCase();
       const matchName = (name) => !q || String(name).toLowerCase().includes(q);
@@ -570,10 +663,50 @@ window.__ModuleLoader__.load({
         'aria-label': g.fav ? t('grid.favProvider', { provider: g.name, n: g.models.length }) : t('grid.provider', { provider: g.name, n: g.models.length })
       }, [
         j('div', { key: 'hd', className: 'gg-blkH' }, [
-          j('span', { key: 'd', className: 'gg-provDot', 'aria-hidden': true }),
+          j('button', {
+            key: 'd',
+            type: 'button',
+            className: 'gg-provDotBtn',
+            title: t('hue.pick', { provider: g.name }),
+            'aria-label': t('hue.pick', { provider: g.name }),
+            'aria-expanded': hueOpen === g.id,
+            onPointerDown: (e) => { e.stopPropagation(); },
+            onClick: (e) => { e.preventDefault(); e.stopPropagation(); setHueOpen(hueOpen === g.id ? null : g.id); }
+          }, j('span', { key: 'dot', className: 'gg-provDot', 'aria-hidden': true })),
           j('span', { key: 'n', className: 'gg-blkName' }, g.name),
           j('span', { key: 'c', className: 'gg-blkCount' }, String(g.models.length))
         ]),
+        /* 颜色选择：四档 + 自动（自动 = 删覆盖项，回落哈希） */
+        hueOpen === g.id
+          ? j('div', { key: 'hue', className: 'gg-hueRow', role: 'group', 'aria-label': t('hue.pick', { provider: g.name }) }, [
+              ...HUES.map((color, slot) => j('button', {
+                key: 'hue' + slot,
+                type: 'button',
+                className: 'gg-hueSwatch' + (readHueMap()[g.id] === slot ? ' on' : ''),
+                style: { '--gg-sw': color },
+                title: hueLabels[slot],
+                'aria-label': hueLabels[slot],
+                'aria-pressed': readHueMap()[g.id] === slot,
+                onClick: (e) => { e.preventDefault(); e.stopPropagation(); setProviderHue(g.id, slot); setHueOpen(null); }
+              })),
+              /* 自定义：原生取色器，任意 #rrggbb；改动时保持面板开着方便继续调 */
+              j('input', {
+                key: 'custom',
+                type: 'color',
+                className: 'gg-hueCustom' + (typeof readHueMap()[g.id] === 'string' ? ' on' : ''),
+                value: typeof readHueMap()[g.id] === 'string' ? readHueMap()[g.id] : '#b78bfa',
+                title: t('hue.custom'),
+                'aria-label': t('hue.custom'),
+                onChange: (e) => setProviderHue(g.id, e.target.value)
+              }),
+              j('button', {
+                key: 'auto',
+                type: 'button',
+                className: 'gg-hueAuto' + (readHueMap()[g.id] === undefined ? ' on' : ''),
+                onClick: (e) => { e.preventDefault(); e.stopPropagation(); setProviderHue(g.id, undefined); setHueOpen(null); }
+              }, t('hue.auto'))
+            ])
+          : null,
         j('div', { key: 'md', className: 'gg-blkM' }, g.models.map((m, c) => {
           const prov = m.provider || g.id;
           const sel = !!current && current.provider === prov && current.model === m.id;
@@ -749,6 +882,7 @@ window.__ModuleLoader__.load({
     /* ── seat：药丸触发器 ─────────────────────────────────────────── */
     function GearGridSeat(props) {
       const t = props.t;
+      useHueMap();
       const state = react.useSyncExternalStore(
         (fn) => props.directory.subscribe(fn),
         () => props.directory.getSnapshot()
