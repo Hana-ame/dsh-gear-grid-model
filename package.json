@@ -1,5 +1,5 @@
 {
-  "name": "@local/gear-grid-model",
+  "name": "dsh-gear-grid-model",
   "version": "1.0.0",
   "description": "把 composer 的 model seat 换成 Gear Grid（2D Cosmic Shifter）风格：28px 药丸触发器 + 星野弹窗 + 元素×强度 2D 网格，一次选择模型与推理等级。数据与提交完全复用 ctx.modelDirectories（与 /model 命令、原生 seat 同源），本包只做显示层；原生 seat 折叠而非卸载。视觉只用 dsh 主题令牌（--dsw-alias-* / --dsw-radius-* / elevation / mask-blur / focus-ring），宇宙色相经 color-mix 派生，自动跟随明暗色板。",
   "private": true,

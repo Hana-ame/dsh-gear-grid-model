@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: '@local/gear-grid-model',
+  id: 'dsh-gear-grid-model',
   factory(require) {
     const react = require('react');
     const { jsx, jsxs } = require('react/jsx-runtime');
@@ -51,7 +51,7 @@ window.__ModuleLoader__.load({
     };
 
     const NS = 'gearGrid';
-    const PKG = '@local/gear-grid-model';
+    const PKG = 'dsh-gear-grid-model';
     const STYLE_ID = PKG + '/GearGrid.module.css';
     const SLOT = 'conversation.input.right';
     const ENTRY = 'gearGrid';
