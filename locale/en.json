@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Gear Grid Model Picker",
-    "description": "Replaces the composer model seat with a Gear Grid (2D Cosmic Shifter) style dial for switching among 28 models."
+    "description": "Replaces the composer model seat with a Gear Grid (2D Cosmic Shifter) dial. The All tab lists only manually starred favorites grouped by provider; a provider tab shows that provider’s full catalog."
   }
 }

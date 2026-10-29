@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Gear Grid 模型选择器",
-    "description": "把输入框的模型选择座位换成 Gear Grid（2D Cosmic Shifter）风格转盘，28 个模型一键切换。"
+    "description": "把输入框的模型选择座位换成 Gear Grid（2D Cosmic Shifter）风格转盘：「全部」只显示手动 star 的常用模型（按 provider 分组），点具体 provider 才显示该 provider 的全部可用模型。"
   }
 }
