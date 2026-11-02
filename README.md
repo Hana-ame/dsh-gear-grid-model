@@ -61,6 +61,26 @@ dsh --profile web
 - **原生座位折叠而非卸载** —— 原始模型座位留在树里但隐藏，不破坏其它依赖它的东西。
 - **`package.json` 声明** —— `dsh.bundle.patch` → `./cordis.patch.yml`；`dsh.client`（platform `web`，`inject` locale + model-selection 模块）。
 
+## 复用（其它插件嵌入同一个选择器）
+
+v1.1 起本包的客户端 bundle 额外导出可复用组件（不改变自身 seat 行为）：
+
+```js
+const gear = require('dsh-gear-grid-model');        // 或 require.async(...) 做可选依赖
+gear.ensureGearGridStyles();                        // 注入 .gg-* 样式（幂等）
+jsx(gear.GearGridPicker, {
+  t: ctx.locale.bind(gear.gearGridNamespace),       // gear 自己的文案（常用/搜索/强度）
+  state: { status: 'ready', groups },               // 与 ctx.modelDirectories 同形的 groups
+  current: { provider, model, reasoningEffort? },   // 高亮当前选择
+  tab, onTab,                                       // null = 常用，其余 = provider id
+  onSelect: (sel) => { /* {provider, model, reasoningEffort?} */ },
+  onClose,
+  onReload,
+});
+```
+
+调用方自己负责触发器与弹窗开关；弹窗是 fixed 遮罩，嵌在任意面板里都能用。拿不到这些导出时调用方应自行回退到普通下拉框。
+
 ## 开发
 
 - `verify.cjs` —— 小型校验脚本（断言客户端 bundle 与 boot 图包含本插件）。

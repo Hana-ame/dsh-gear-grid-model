@@ -1038,6 +1038,23 @@ window.__ModuleLoader__.load({
       });
     }
 
-    return { inject: INJECT, apply };
+    /*
+     * 供其它插件复用的选择器（不改变本插件自身的 seat 行为）：
+     *   const gear = require('dsh-gear-grid-model');
+     *   gear.ensureGearGridStyles();                     // 注入 .gg-* 样式
+     *   jsx(gear.GearGridPicker, {
+     *     t: ctx.locale.bind(gear.gearGridNamespace),    // 用 gear 的文案
+     *     state: { status: 'ready', groups },            // 与 ctx.modelDirectories 同形
+     *     current: { provider, model, reasoningEffort? },
+     *     tab, onTab, onSelect(sel), onClose, onReload,
+     *   });
+     */
+    return {
+      inject: INJECT,
+      apply,
+      GearGridPicker: GearDialog,
+      ensureGearGridStyles: ensureStyles,
+      gearGridNamespace: NS,
+    };
   }
 });
